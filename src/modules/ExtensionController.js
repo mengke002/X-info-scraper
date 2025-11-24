@@ -24,8 +24,6 @@ export class ExtensionController {
    * 在插件中填入Twitter用户名
    */
   async fillUsername(username) {
-    console.log(`📝 填入用户名: @${username}`);
-
     try {
       // 查找用户名输入框
       const inputSelectors = [
@@ -42,41 +40,28 @@ export class ExtensionController {
           // 清空输入框
           await input.click({ clickCount: 3 }); // 选中全部
           await this.extensionPage.keyboard.press('Backspace');
-          
+
           try {
             // 尝试使用粘贴方式 (更准确且快)
             await this.extensionPage.evaluate((text) => {
                 const input = document.activeElement;
-                // Modern method
-                // navigator.clipboard.writeText(text); 
-                // Fallback/Simpler for extensions which might lack permissions
-                // Setting value directly is often safest for simple inputs
                 if(input && (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA')) {
-                    // React 16+ hack to ensure onChange fires
                     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
                     nativeInputValueSetter.call(input, text);
-                    
                     const ev2 = new Event('input', { bubbles: true});
                     input.dispatchEvent(ev2);
                 }
             }, username);
-             console.log(`✅ 已粘贴用户名: @${username}`);
           } catch (pasteError) {
-              // Fallback to typing
-               console.warn('⚠️ 粘贴失败，回退到打字模式');
                await input.type(username, { delay: 50 });
-               console.log(`✅ 已填入用户名: @${username}`);
           }
 
           await this.sleep(500);
           return true;
         }
       }
-
-      console.warn('⚠️  未找到用户名输入框');
       return false;
     } catch (error) {
-      console.warn(`⚠️  填入用户名失败: ${error.message}`);
       return false;
     }
   }
@@ -98,8 +83,6 @@ export class ExtensionController {
    * 打开插件页面
    */
   async openExtension(dataType = null) {
-    console.log('🔌 正在打开插件...');
-
     // 获取所有页面
     let pages = await this.browser.browser.pages();
 
@@ -114,36 +97,27 @@ export class ExtensionController {
 
     // 如果没找到，尝试获取插件ID并直接打开popup
     if (!this.extensionPage) {
-      console.log('🔍 尝试直接打开插件popup...');
-
       try {
-        // 方法1: 从已加载的扩展中获取ID（传入类型以选择正确的扩展）
         const extensionId = await this.getExtensionId(dataType);
 
         if (extensionId) {
-          console.log(`✅ 找到插件ID: ${extensionId}`);
-
-          // 打开popup页面
           const popupUrl = `chrome-extension://${extensionId}/popup.html`;
           const popupPage = await this.browser.browser.newPage();
           await popupPage.goto(popupUrl, { waitUntil: 'domcontentloaded' });
           await this.sleep(2000);
 
           this.extensionPage = popupPage;
-          console.log('✅ 已打开插件页面');
           await this.extensionPage.bringToFront();
           return true;
         }
       } catch (error) {
-        console.warn('⚠️  无法自动打开插件:', error.message);
+        // 降级：等待用户手动点击
       }
 
-      // 方法2: 如果还是没找到，等待用户手动点击
-      console.log('⚠️  无法自动打开插件');
-      console.log('💡 请在浏览器右上角手动点击插件图标...');
-      await this.sleep(10000);  // 给用户更多时间
+      // 如果还是没找到，等待用户手动点击
+      console.log('⚠️  请手动点击插件图标...');
+      await this.sleep(10000);
 
-      // 再次查找
       pages = await this.browser.browser.pages();
       for (const page of pages) {
         const url = page.url();
@@ -155,47 +129,37 @@ export class ExtensionController {
     }
 
     if (this.extensionPage) {
-      console.log('✅ 插件页面已打开');
       await this.extensionPage.bringToFront();
       return true;
     }
 
-    throw new Error('无法打开插件页面，请确保插件已正确加载');
+    throw new Error('无法打开插件页面');
   }
 
   /**
    * 获取扩展ID - 支持根据类型选择正确的扩展
-   * @param preferredType 可以是 'posts'/'replies'/'followers'/'following' 或 'tweetExport'/'followerExport'
    */
   async getExtensionId(preferredType = null) {
     try {
       // 如果有类型偏好，使用BrowserManager中的extensionMap
       if (preferredType && this.browser.extensionMap) {
-        // 先转换为扩展类型（如果传入的是 'posts' 等）
         let extensionType = preferredType;
         if (['posts', 'tweets', 'replies', 'followers', 'following'].includes(preferredType)) {
           extensionType = this.getExtensionForType(preferredType);
         }
 
-        // 根据扩展类型映射到扩展文件夹名
         const extFolderMap = {
-          'tweetExport': 'TwExport',                    // TwExport文件夹
-          'followerExport': 'Twitter Export Follower'   // Twitter Export Follower文件夹
+          'tweetExport': 'TwExport',
+          'followerExport': 'Twitter Export Follower'
         };
 
         const folderName = extFolderMap[extensionType];
         if (folderName && this.browser.extensionMap[folderName]) {
-          const extId = this.browser.extensionMap[folderName];
-          console.log(`✅ 从映射找到${extensionType}插件: ${extId}`);
-          return extId;
-        } else {
-          console.warn(`⚠️  未找到扩展映射: extensionType=${extensionType}, folderName=${folderName}`);
-          console.log(`🔍 当前映射表:`, this.browser.extensionMap);
+          return this.browser.extensionMap[folderName];
         }
       }
 
-      // 降级方案1: 尝试从当前 targets 中查找扩展 ID
-      console.log('🔄 降级方案: 从 browser targets 查找扩展...');
+      // 降级方案: 从 browser targets 查找
       const targets = await this.browser.browser.targets();
       const extensionIds = [];
 
@@ -204,35 +168,17 @@ export class ExtensionController {
         if (url.includes('chrome-extension://')) {
           const match = url.match(/chrome-extension:\/\/([a-z]{32})/);
           if (match) {
-            extensionIds.push({
-              id: match[1],
-              url: url
-            });
+            extensionIds.push({ id: match[1], url: url });
           }
         }
       }
 
-      // 如果找到多个扩展，尝试根据 URL 中的关键词匹配
-      if (extensionIds.length > 1 && preferredType) {
-        for (const ext of extensionIds) {
-          // 尝试通过 URL 判断是哪个扩展
-          if (ext.url.toLowerCase().includes('popup') || ext.url.toLowerCase().includes('dashboard')) {
-            console.log(`🎯 根据 URL 推测扩展ID: ${ext.id}`);
-            return ext.id;
-          }
-        }
-      }
-
-      // 返回第一个找到的
       if (extensionIds.length > 0) {
-        console.log(`📌 使用第一个扩展ID: ${extensionIds[0].id}`);
         return extensionIds[0].id;
       }
 
-      console.error('❌ 未找到任何扩展ID');
       return null;
     } catch (error) {
-      console.error('获取扩展ID失败:', error.message);
       return null;
     }
   }
@@ -241,15 +187,10 @@ export class ExtensionController {
    * 导航到Twitter用户页面
    */
   async navigateToUser(username) {
-    console.log(`🎯 导航到用户: @${username}`);
-
     const userUrl = `https://twitter.com/${username}`;
     await this.browser.goto(userUrl);
-
-    // 等待页面加载
     await this.sleep(3000);
 
-    // 验证用户页面已加载
     const exists = await this.browser.page.evaluate(() => {
       return !document.body.textContent.includes("This account doesn't exist");
     });
@@ -257,16 +198,12 @@ export class ExtensionController {
     if (!exists) {
       throw new Error(`用户 @${username} 不存在`);
     }
-
-    console.log('✅ 用户页面已加载');
   }
 
   /**
-   * 在插件中选择采集类型 - 完全自动化版本
+   * 在插件中选择采集类型
    */
   async selectExportType(type) {
-    console.log(`📋 自动选择采集类型: ${type}`);
-
     if (!this.extensionPage) {
       await this.openExtension();
     }
@@ -274,22 +211,18 @@ export class ExtensionController {
     await this.extensionPage.bringToFront();
 
     try {
-      // TwExport使用单选按钮，通过evaluate直接操作
       const selected = await this.extensionPage.evaluate((targetType) => {
-        // 查找所有单选按钮和关联的label
         const labels = document.querySelectorAll('label');
 
         for (const label of labels) {
           const text = label.textContent.trim();
 
-          // 匹配类型
           if (
             (targetType === 'posts' && (text === 'Posts' || text === 'Tweets')) ||
             (targetType === 'replies' && text === 'Replies') ||
             (targetType === 'following' && text === 'Following') ||
             (targetType === 'followers' && (text === 'Followers' || text === 'Verified Followers'))
           ) {
-            // 找到对应的radio input
             const radio = label.querySelector('input[type="radio"]') ||
                          document.querySelector(`input[type="radio"][id="${label.getAttribute('for')}"]`);
 
@@ -297,27 +230,20 @@ export class ExtensionController {
               radio.click();
               return true;
             }
-
-            // 如果没有找到radio，尝试点击label本身
             label.click();
             return true;
           }
         }
-
         return false;
       }, type);
 
       if (selected) {
-        console.log(`✅ 已自动选择: ${type}`);
         await this.sleep(500);
         return true;
       }
-
-      console.warn(`⚠️  无法自动选择类型: ${type}`);
       return false;
 
     } catch (error) {
-      console.warn(`⚠️  自动选择类型失败: ${error.message}`);
       return false;
     }
   }
@@ -333,13 +259,10 @@ export class ExtensionController {
         if (element) {
           await element.click();
           await this.sleep(300);
-          console.log('📂 已打开下拉菜单');
           return true;
         }
       }
-    } catch (error) {
-      // 忽略，可能不需要dropdown
-    }
+    } catch (error) { /* ignore */ }
     return false;
   }
 

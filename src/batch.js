@@ -4,7 +4,7 @@ import config from '../config.js';
 import { BrowserManager } from './modules/BrowserManager.js';
 import { TwitterAuth } from './modules/TwitterAuth.js';
 import { ExtensionController } from './modules/ExtensionController.js';
-import { DataExporter } from './modules/DataExporter.js';
+import { DataExporter } from './modules/DataExporter.js';  // 保留用于本地调试
 import { BatchRunner } from './modules/BatchRunner.js';
 import { IncrementalCollector } from './modules/IncrementalCollector.js';
 import { DatabaseManager } from './modules/DatabaseManager.js';
@@ -32,25 +32,19 @@ class BatchTwitterScraper {
   async init() {
     if (this.isInitialized) return;
 
-    console.log('╔════════════════════════════════════════╗');
-    console.log('║   Twitter 批量数据采集器 v3.0         ║');
-    console.log('║   支持数据库集成 | 完全自动化          ║');
-    console.log('╚════════════════════════════════════════╝\n');
+    console.log('\n🚀 Twitter 批量采集器 v3.0\n');
 
     // 初始化数据库 (如果配置了)
     if (this.config.database?.enabled) {
-      console.log('🗄️  初始化数据库连接...');
       this.database = new DatabaseManager(this.config.database);
       await this.database.init();
-    } else {
-      console.log('⚠️  数据库未启用,将使用文件模式');
+      console.log('✅ 数据库已连接');
     }
 
     // 初始化增量收集器 (传入数据库实例)
     this.incrementalCollector = new IncrementalCollector(this.config, this.database);
 
-    // 暂时不修改插件，直接使用原版
-    console.log('📦 使用原版插件（不修改限制）');
+    // 加载扩展路径
     const tweetExtPath = path.resolve(process.cwd(), this.config.extensions.tweetExport);
     const followerExtPath = path.resolve(process.cwd(), this.config.extensions.followerExport);
 
@@ -58,7 +52,6 @@ class BatchTwitterScraper {
     this.browser = new BrowserManager(this.config);
 
     // 启动浏览器并同时加载两个插件
-    console.log('📦 加载插件: TwExport 和 Twitter Export Follower');
     await this.browser.launch([tweetExtPath, followerExtPath]);
 
     // 初始化认证模块
@@ -70,7 +63,7 @@ class BatchTwitterScraper {
     // 初始化数据导出器
     this.exporter = new DataExporter(this.config);
 
-    console.log('✅ 初始化完成!\n');
+    console.log('✅ 浏览器和扩展已加载\n');
     this.isInitialized = true;
   }
 
@@ -180,15 +173,10 @@ class BatchTwitterScraper {
       // 忽略关闭错误
     }
 
-    // 7. 增量处理 - 合并新旧数据
+    // 7. 增量处理 - 合并新旧数据（数据已入库）
     const result = await this.incrementalCollector.processCollectedData(username, type, rawData);
 
-    // 8. 导出合并后的所有数据
-    if (result.data.length > 0) {
-      this.exporter.config.output.filename = `${username}_${type}_${new Date().toISOString().slice(0, 10)}`;
-      this.exporter.collectedData = result.data;
-      await this.exporter.export();
-    }
+    // ✅ 数据已入库，不再导出 CSV/JSON 文件
 
     return result;
   }
