@@ -108,13 +108,6 @@ export class TwitterAuth {
       await this.browser.page.keyboard.press('Enter');
       await this.sleep(5000); // 稍微多等一会，让页面响应
 
-      // --- DEBUG: 输入用户名后的状态 ---
-      console.log('🔍 [DEBUG] 检查输入用户名后的页面状态...');
-      await this.browser.screenshot(`debug-after-username-${Date.now()}.png`);
-      await this.browser.dumpPageContent(`debug-after-username-${Date.now()}.html`);
-      await this.browser.logPageInfo();
-      // -----------------------------
-
       // 2. 处理可能的中间验证步骤 (例如: 输入手机号或再次确认用户名)
       // 检查是否有密码输入框，如果没有，说明有中间步骤
       try {
@@ -122,9 +115,6 @@ export class TwitterAuth {
       } catch (e) {
         // 没有直接出现密码框，可能需要额外验证
         console.log('⚠️ 未检测到密码框，可能需要额外验证...');
-        
-        // 再次打印页面状态，确认是否卡住
-        await this.browser.logPageInfo();
 
         // 查找通用的文本输入框 (通常用于验证手机号或用户名)
         let actualInputSelector = '';
@@ -165,12 +155,10 @@ export class TwitterAuth {
             await this.browser.page.keyboard.press('Enter');
             
             console.log('⏳ 等待验证响应...');
-            await this.sleep(8000); // 增加等待时间到 8秒
-            await this.browser.logPageText(); // 打印当前页面文本，查看是否有错误提示
+            await this.sleep(5000);
             
         } else {
              console.log('⚠️ 未找到密码框，也未找到验证输入框，页面可能未正确加载');
-             await this.browser.logPageText();
         }
       }
 
@@ -200,11 +188,6 @@ export class TwitterAuth {
       }
     } catch (error) {
       console.error('❌ Twitter登录失败:', error.message);
-      const timestamp = Date.now();
-      await this.browser.screenshot(`login-error-${timestamp}.png`);
-      await this.browser.dumpPageContent(`login-error-${timestamp}.html`);
-      await this.browser.logPageInfo();
-      await this.browser.logPageText(); // 打印页面文本
       throw error;
     }
   }
