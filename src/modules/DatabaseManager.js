@@ -690,7 +690,7 @@ export class DatabaseManager {
     try {
       // 1. 获取任务的历史数据
       const [rows] = await connection.query(
-        `SELECT last_post_count, updated_at, frequency_group, avg_posts_per_day
+        `SELECT last_post_count, last_run_at, updated_at, frequency_group, avg_posts_per_day
          FROM scrape_tasks
          WHERE id = ?`,
         [taskId]
@@ -703,22 +703,42 @@ export class DatabaseManager {
 
       const task = rows[0];
       const lastCount = task.last_post_count || 0;
-      const lastUpdated = new Date(task.updated_at);
-      const daysSinceUpdate = (Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
 
-      // 2. 计算新增帖子数和平均发帖速率
+      // 使用 last_run_at 而非 updated_at 来计算时间间隔（更准确）
+      const lastRunTime = task.last_run_at ? new Date(task.last_run_at) : null;
+
+      // 2. 计算新增帖子数
       const newPosts = Math.max(0, totalPostCount - lastCount);
 
-      // 关键修复：如果间隔时间太短（<0.5天），使用历史平均值或保守估计
+      // 3. 计算平均发帖速率（使用加权移动平均，避免极端值）
       let avgPostsPerDay;
-      if (daysSinceUpdate < 0.5) {
-        // 间隔太短，保留历史值或使用保守估计
-        avgPostsPerDay = task.avg_posts_per_day || (newPosts > 0 ? 5 : 1);
+
+      if (!lastRunTime || lastCount === 0) {
+        // 首次采集：使用保守的默认值
+        avgPostsPerDay = task.avg_posts_per_day || 5;
       } else {
-        avgPostsPerDay = newPosts / daysSinceUpdate;
+        const daysSinceLastRun = (Date.now() - lastRunTime.getTime()) / (1000 * 60 * 60 * 24);
+
+        if (daysSinceLastRun < 0.04) {
+          // 间隔小于 1 小时（0.04天）：完全使用历史值，忽略本次计算
+          avgPostsPerDay = task.avg_posts_per_day || 5;
+        } else if (daysSinceLastRun < 0.5) {
+          // 间隔小于 12 小时：加权平均（历史值权重 70%）
+          const currentRate = newPosts / daysSinceLastRun;
+          const historicalRate = task.avg_posts_per_day || 5;
+          avgPostsPerDay = historicalRate * 0.7 + currentRate * 0.3;
+        } else {
+          // 间隔超过 12 小时：正常计算，但仍做加权平均（历史值权重 30%）
+          const currentRate = newPosts / daysSinceLastRun;
+          const historicalRate = task.avg_posts_per_day || currentRate;
+          avgPostsPerDay = historicalRate * 0.3 + currentRate * 0.7;
+        }
+
+        // 限制极端值范围 [0, 100]
+        avgPostsPerDay = Math.max(0, Math.min(100, avgPostsPerDay));
       }
 
-      // 3. 根据发帖速率确定频率分组和下次运行时间
+      // 4. 根据发帖速率确定频率分组和下次运行时间
       let frequencyGroup = 'medium';
       let nextRunHours = 4; // 默认4小时
 
@@ -732,10 +752,10 @@ export class DatabaseManager {
         nextRunHours = 6;
       }
 
-      // 4. 计算下次运行时间（北京时间 8-24点）
+      // 5. 计算下次运行时间（北京时间 8-24点）
       const nextRunTime = this.calculateNextRunTime(nextRunHours);
 
-      // 5. 更新数据库
+      // 6. 更新数据库
       await connection.query(
         `UPDATE scrape_tasks
          SET frequency_group = ?,

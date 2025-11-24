@@ -65,18 +65,27 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_CRON: ${{ github.event.schedule }}
           INPUT_FREQ: ${{ github.event.inputs.frequency_group || 'all' }}
-          INPUT_BATCH: ${{ github.event.inputs.batch_size || '20' }}
+          INPUT_BATCH: ${{ github.event.inputs.batch_size || '' }}
         run: |
-          # 定时任务根据分钟数确定频率组
+          # 定时任务根据触发的 cron 表达式确定频率组（避免执行延迟导致的时间漂移）
           if [ "$EVENT_NAME" = "schedule" ]; then
-            MINUTE=$(date -u +%M)
-            case $MINUTE in 0|00) FREQ="high";; 30) FREQ="medium";; 45) FREQ="low";; *) FREQ="all";; esac
+            # 从 cron 表达式中提取分钟数（格式: "M H * * *"）
+            CRON_MINUTE=$(echo "$SCHEDULE_CRON" | awk '{print $1}')
+            case $CRON_MINUTE in
+              0)  FREQ="high";   BATCH_SIZE=15;;  # 高频用户：采集频繁，每次少量
+              30) FREQ="medium"; BATCH_SIZE=25;;  # 中频用户：适中
+              45) FREQ="low";    BATCH_SIZE=30;;  # 低频用户：采集少，每次多量
+              *)  FREQ="all";    BATCH_SIZE=20;;
+            esac
+            echo "📅 触发的 cron: $SCHEDULE_CRON (分钟=$CRON_MINUTE)"
           else
             FREQ="$INPUT_FREQ"
+            BATCH_SIZE="${INPUT_BATCH:-20}"  # 手动触发使用输入值或默认20
           fi
-          echo "🚀 频率组: $FREQ, 批次大小: $INPUT_BATCH"
-          npm run batch -- --batch-size=$INPUT_BATCH --frequency=$FREQ
+          echo "🚀 频率组: $FREQ, 批次大小: $BATCH_SIZE"
+          npm run batch -- --batch-size=$BATCH_SIZE --frequency=$FREQ
 
       - name: Notify on failure
         if: failure() && env.WEBHOOK_URL != ''
