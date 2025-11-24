@@ -121,6 +121,11 @@ class BatchTwitterScraper {
     } else {
       console.log('✅ 已登录');
     }
+    
+    // 无论何种方式登录成功，在本地环境下都导出 Cookies，方便配置到 GitHub Secrets
+    if (!process.env.CI) {
+        await this.auth.exportCookies();
+    }
   }
 
   /**
