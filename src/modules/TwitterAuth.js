@@ -55,25 +55,40 @@ export class TwitterAuth {
 
         // 查找通用的文本输入框 (通常用于验证手机号或用户名)
         // 优先找 data-testid，如果没有找 input[name="text"]
-        const verificationInput = await this.browser.page.$('input[data-testid="ocfEnterTextTextInput"]') || 
-                                  await this.browser.page.$('input[name="text"]');
+        const inputSelector = 'input[data-testid="ocfEnterTextTextInput"]';
+        let verificationInput = await this.browser.page.$(inputSelector);
+        if (!verificationInput) {
+             // 尝试另一个选择器
+             verificationInput = await this.browser.page.$('input[name="text"]');
+        }
 
         if (verificationInput) {
             console.log('🔍 检测到中间验证输入框...');
             
-            // 获取输入框的 placeholder 或相关文本，帮助判断需要输入什么
-            // 这里简单处理：如果有手机号配置，优先试手机号；否则试用户名
-            const valToType = this.credentials.phone || this.credentials.username;
+            // 策略：
+            // 1. 如果有 handle (用户名)，优先使用 handle (这是解决"邮箱登录被要求验证用户名"的关键)
+            // 2. 如果提示包含 "phone"，优先尝试 phone
+            // 3. 否则使用 username (可能是邮箱)
             
-            console.log(`👉 尝试输入验证信息 (优先手机号，否则用户名): ${valToType ? '******' : '无'}`);
+            let valueToType = this.credentials.username; // 默认回填登录账号
+            const pageText = await this.browser.page.evaluate(() => document.body.textContent.toLowerCase());
             
-            if (valToType) {
-                await verificationInput.type(valToType);
-                await this.browser.page.keyboard.press('Enter');
-                await this.sleep(3000); // 等待验证通过
-            } else {
-                console.warn('⚠️ 需要验证但未配置手机号，且无法确定是否需要再次输入用户名');
+            if (this.credentials.handle) {
+                 console.log('🛡️ 使用 Handle (用户名) 进行验证...');
+                 valueToType = this.credentials.handle;
+            } else if (pageText.includes('phone') && this.credentials.phone) {
+                 console.log('📱 使用手机号进行验证...');
+                 valueToType = this.credentials.phone;
+            } else if (pageText.includes('username') && !pageText.includes('email')) {
+                 // 明确要求 username 但我们没有 handle，这可能会失败，但也只能试一下 username
+                 console.log('⚠️ 页面要求 Username 但未配置 Handle，尝试使用登录账号...');
             }
+
+            console.log(`📝 正在中间验证框中输入: ${valueToType.substring(0, 3)}***`);
+            // 重新获取元素以确保它仍然有效
+            await this.browser.type(inputSelector, valueToType);
+            await this.browser.page.keyboard.press('Enter');
+            await this.sleep(3000); // 等待验证通过
         } else {
              console.log('⚠️ 未找到密码框，也未找到验证输入框，页面可能未正确加载');
         }

@@ -21,9 +21,10 @@ export default {
 
   // Twitter账号信息
   twitter: {
-    username: process.env.TWITTER_USERNAME || '',  // 你的Twitter用户名或邮箱
+    username: process.env.TWITTER_USERNAME || '',  // 你的Twitter登录账号(邮箱/手机/用户名)
     password: process.env.TWITTER_PASSWORD || '',  // 你的Twitter密码
-    phone: process.env.TWITTER_PHONE || '',  // 如果需要手机验证,填写手机号
+    phone: process.env.TWITTER_PHONE || '',  // 手机号
+    handle: process.env.TWITTER_HANDLE || '', // Twitter Handle (不带@), 用于异地登录验证
   },
 
   // 采集目标 (单用户模式使用)
