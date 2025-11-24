@@ -101,12 +101,20 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
+      # 安装 XVFB 用于支持插件加载 (Linux环境下无头模式加载插件不稳定)
+      - name: Install XVFB
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: npm ci
 
       # 运行采集任务
       - name: Run scraper (Batch Mode)
         if: github.event.inputs.mode == 'batch' || github.event_name == 'schedule'
+        env:
+          USE_XVFB: true # 启用 XVFB
         run: |
           # 根据定时任务时间确定频率组
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -135,7 +143,7 @@ jobs:
           echo "  - Frequency group: $FREQ"
           echo "  - Batch size: $BATCH_SIZE"
 
-          npm run batch -- --batch-size=$BATCH_SIZE --frequency=$FREQ
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" npm run batch -- --batch-size=$BATCH_SIZE --frequency=$FREQ
 
       # 清理和检查
       - name: Cleanup and check output

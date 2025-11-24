@@ -542,6 +542,7 @@ Twitter批量采集器 - 使用说明
   --single=<username>              # 单用户模式
   --type=<posts|replies>           # 单用户模式的数据类型
   --count=<number>                 # 采集数量限制
+  --login-only                     # 仅执行登录操作并退出（用于 CI 环境刷新 Profile）
 
 频率分组说明:
   high   - 高频用户 (每2小时, 北京时间8-24点)
@@ -568,7 +569,15 @@ async function main() {
   const scraper = new BatchTwitterScraper();
 
   try {
-    if (options.single) {
+    if (options['login-only']) {
+        // 仅登录模式
+        console.log('🚀 启动仅登录模式 (Login Only Mode)...');
+        await scraper.init();
+        await scraper.ensureLoggedIn();
+        console.log('✅ 登录检查完成，正在退出...');
+        await scraper.cleanup();
+        process.exit(0);
+    } else if (options.single) {
       // 单用户模式
       const type = options.type || 'posts';
       const count = options.count ? parseInt(options.count) : null;

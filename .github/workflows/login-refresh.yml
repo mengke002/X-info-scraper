@@ -52,15 +52,12 @@ jobs:
           # 策略：先尝试从零开始登录，生成全新的干净 Profile
           mkdir -p data/chrome-profile
 
-      # 3. 执行登录脚本 (Batch Mode 但仅为了登录)
-      # 我们运行一个非常简单的任务 (比如采集单条数据)，以此触发 login 流程
+      # 3. 执行登录脚本 (仅登录模式)
+      # 使用 --login-only 参数，只执行登录检查和 Profile 生成，不进行采集
       - name: Perform Login
         run: |
           echo "🔐 Starting login process..."
-          # 运行 batch 脚本，因为它包含了完整的初始化和登录逻辑
-          # 使用 --single 模式采集一个简单的用户，只为触发登录
-          # --count=1 限制数量，尽快结束
-          npm run batch -- --single=Twitter --type=posts --count=1
+          npm run batch -- --login-only
         continue-on-error: false # 如果登录失败，整个任务失败
 
       # 4. 验证 Profile 是否生成
