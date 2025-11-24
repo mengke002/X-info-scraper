@@ -1,0 +1,8 @@
+{
+   "appDesc": {
+      "message": "TwExportは、Twitter向けに作られたChromeの拡張機能で、どのアカウントからでもツイートをエクスポートしてCSVファイルにダウンロードすることができます。"
+   },
+   "appName": {
+      "message": "TwExport - 任意のアカウントからツイートをエクスポート"
+   }
+}

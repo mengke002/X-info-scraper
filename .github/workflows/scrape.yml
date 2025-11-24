@@ -1,0 +1,193 @@
+name: Twitter Data Scraper
+
+on:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: true
+        default: 'batch'
+        type: choice
+        options:
+          - batch
+          - single
+      batch_size:
+        description: 'Batch size (random N users from database)'
+        required: false
+        default: '20'
+      frequency_group:
+        description: 'User frequency group to scrape'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - high     # 高频用户 (每6小时)
+          - medium   # 中频用户 (每天)
+          - low      # 低频用户 (每周)
+
+  # 自动定时任务（北京时间 8-24点）
+  schedule:
+    # 高频用户：每2小时 (北京时间 8, 10, 12, 14, 16, 18, 20, 22点)
+    # UTC 时间: 0, 2, 4, 6, 8, 10, 12, 14
+    - cron: '0 0,2,4,6,8,10,12,14 * * *'
+
+    # 中频用户：每4小时 (北京时间 8, 12, 16, 20点)
+    # UTC 时间: 0, 4, 8, 12
+    - cron: '30 0,4,8,12 * * *'
+
+    # 低频用户：每6小时 (北京时间 8, 14, 20点)
+    # UTC 时间: 0, 6, 12
+    - cron: '45 0,6,12 * * *'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 最长运行2小时
+
+    env:
+      # 数据库连接（从 Secrets 读取）
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # 无头模式（GitHub Actions 必须启用）
+      HEADLESS: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # 拉取 chrome-profile（从 private repo）
+      - name: Checkout profile repo
+        uses: actions/checkout@v4
+        with:
+          repository: YOUR_USERNAME/twitter-scraper-profile
+          ssh-key: ${{ secrets.PROFILE_REPO_SSH_KEY }}
+          path: data/chrome-profile-repo
+
+      - name: Setup chrome profile
+        run: |
+          # 从 profile repo 复制 chrome-profile 到正确位置
+          cp -r data/chrome-profile-repo/chrome-profile data/chrome-profile
+
+          # 检查 profile 状态
+          if [ -d "data/chrome-profile/Default" ]; then
+            echo "✅ Chrome profile loaded from private repo"
+            ls -lh data/chrome-profile/Default/Cookies || echo "⚠️ No Cookies file"
+            du -sh data/chrome-profile
+          else
+            echo "❌ Chrome profile not found!"
+            exit 1
+          fi
+
+      # 安装 Chrome 浏览器（GitHub Actions 环境）
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+        with:
+          chrome-version: stable
+
+      - name: Verify Chrome installation
+        run: |
+          which google-chrome-stable || which google-chrome || which chromium
+          google-chrome-stable --version || google-chrome --version || chromium --version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 运行采集任务
+      - name: Run scraper (Batch Mode)
+        if: github.event.inputs.mode == 'batch' || github.event_name == 'schedule'
+        run: |
+          # 根据定时任务时间确定频率组
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # 获取当前 UTC 时间的分钟数来判断是哪个 cron 触发的
+            MINUTE=$(date -u +%M)
+
+            echo "Current UTC minute: $MINUTE"
+
+            # 0分 -> high, 30分 -> medium, 45分 -> low
+            if [ "$MINUTE" -eq "0" ]; then
+              FREQ="high"
+            elif [ "$MINUTE" -eq "30" ]; then
+              FREQ="medium"
+            elif [ "$MINUTE" -eq "45" ]; then
+              FREQ="low"
+            else
+              FREQ="all"
+            fi
+          else
+            FREQ="${{ github.event.inputs.frequency_group || 'all' }}"
+          fi
+
+          BATCH_SIZE="${{ github.event.inputs.batch_size || '20' }}"
+
+          echo "📊 Running batch scraper:"
+          echo "  - Frequency group: $FREQ"
+          echo "  - Batch size: $BATCH_SIZE"
+
+          npm run batch -- --batch-size=$BATCH_SIZE --frequency=$FREQ
+
+      # 清理和检查
+      - name: Cleanup and check output
+        if: always()
+        run: |
+          # 清理 node_modules（不需要提交）
+          rm -rf node_modules
+
+          # 检查 profile 大小
+          echo "📦 Chrome profile size:"
+          du -sh data/chrome-profile || echo "Profile not found"
+
+          # 检查输出文件
+          echo "📄 Output files:"
+          ls -lh output/ || echo "No output files"
+
+          # 检查批量报告
+          if [ -f "output/batch-report.json" ]; then
+            echo "📊 Batch report preview:"
+            head -n 30 output/batch-report.json
+          fi
+
+      # 提交更新的数据（可选）
+      - name: Commit updates
+        if: success()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # 只提交输出文件和报告，不提交 profile（太大且会被 cache）
+          git add output/ || true
+          git add logs/ || true
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🤖 Auto-update: Scraper run #${{ github.run_number }} [skip ci]"
+            git push
+          fi
+
+      # 上传输出文件（30天保留）
+      - name: Upload output artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: scraper-output-${{ github.run_number }}
+          path: |
+            output/
+            logs/
+          retention-days: 30
+
+      # 失败通知（可选，需要配置 WEBHOOK_URL）
+      - name: Notify on failure
+        if: failure() && secrets.WEBHOOK_URL != ''
+        run: |
+          curl -X POST ${{ secrets.WEBHOOK_URL }} \
+            -H 'Content-Type: application/json' \
+            -d "{\"text\":\"❌ Twitter scraper failed! Run #${{ github.run_number }}\"}" || true

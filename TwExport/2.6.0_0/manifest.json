@@ -1,0 +1,36 @@
+{
+   "action": {
+      "default_icon": {
+         "128": "icon128.plasmo.3c1ed2d2.png",
+         "16": "icon16.plasmo.6c567d50.png",
+         "32": "icon32.plasmo.76b92899.png",
+         "48": "icon48.plasmo.aced7582.png",
+         "64": "icon64.plasmo.8bb5e6e0.png"
+      },
+      "default_popup": "popup.html"
+   },
+   "author": "yueban",
+   "background": {
+      "service_worker": "static/background/index.js"
+   },
+   "default_locale": "en",
+   "description": "__MSG_appDesc__",
+   "host_permissions": [ "*://*.twitter.com/*", "*://*.x.com/*" ],
+   "icons": {
+      "128": "icon128.plasmo.3c1ed2d2.png",
+      "16": "icon16.plasmo.6c567d50.png",
+      "32": "icon32.plasmo.76b92899.png",
+      "48": "icon48.plasmo.aced7582.png",
+      "64": "icon64.plasmo.8bb5e6e0.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnpcavFyErj5IbhuymXBPJc0q89205aQ6R+sLQ2SXt8N0AbqFRdL6+20hQFs9ihozH3YF2y29zs9NWVX6muz8sQpmJCuTq5UYeNpxWh4PDBX6vxKbyOvAbbVG/x5jYZYCTigQQOio7BByLQVhgnk7d8xwJ50CZyD8USnceHpZamhUfvEU1+pKCP7p59CFAyJbmQxmo+zJK9vQWiP/1egKMy9D8WTLR2UJ1feR24Tni3BCmDZ0RAiPrc+oFRUAZtruUYTAPxj218wQbXfGgFPCiEuBi5lErro5E9YJmvf+dUXUKhsgYifmveoWtdbZkTcdTUrd2H7PFaEiOlldY78DZwIDAQAB",
+   "manifest_version": 3,
+   "name": "__MSG_appName__",
+   "oauth2": {
+      "client_id": "1050884950815-svrnbf5ojdbd8q26s622urnlqrca92t6.apps.googleusercontent.com",
+      "scopes": [ "openid", "email", "profile" ]
+   },
+   "permissions": [ "cookies", "storage", "identity" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "2.6.0"
+}

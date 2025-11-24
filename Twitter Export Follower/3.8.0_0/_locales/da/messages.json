@@ -1,0 +1,8 @@
+{
+   "appDesc": {
+      "message": "Export and download all followers, verified followers and following from a user to CSV file for Twitter"
+   },
+   "appName": {
+      "message": "TwExport - Export Twitter Followers to CSV"
+   }
+}

@@ -1,0 +1,8 @@
+{
+   "appDesc": {
+      "message": "TwExport is a Chrome extension designed for Twitter that allows you to export and download tweets from any account into a CSV file."
+   },
+   "appName": {
+      "message": "TwExport - Export Tweets From Any Account"
+   }
+}

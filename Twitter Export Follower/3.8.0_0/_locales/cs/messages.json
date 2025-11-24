@@ -1,0 +1,8 @@
+{
+   "appDesc": {
+      "message": "Easily generate CSV file containing your Twitter followers, verified followers and following lists using this fast, simple web scraping tool."
+   },
+   "appName": {
+      "message": "Twitter Follower and Following Extractor"
+   }
+}
