@@ -111,12 +111,17 @@ export class BrowserManager {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage', // 防止共享内存不足崩溃
         '--disable-gpu', // Headless 模式通常不需要 GPU
+        '--disable-software-rasterizer', // 禁用软件光栅化器
+        '--mute-audio', // 静音
+        '--no-first-run', // 跳过首次运行检查
+        '--no-default-browser-check', // 跳过默认浏览器检查
         `--user-data-dir=${userDataDir}` // 显式在 args 中也指定一次，双重保险
       ],
       defaultViewport: this.config.browser.viewport,
       slowMo: this.config.browser.slowMo,
       userDataDir: userDataDir, // Puppeteer 选项
       ignoreDefaultArgs: ['--enable-automation', '--enable-blink-features=AutomationControlled'],
+      dumpio: true, // 关键：打印 Chrome 的标准输出/错误，用于调试启动失败
     });
 
     console.log('✅ 浏览器启动成功');
