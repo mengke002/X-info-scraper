@@ -740,16 +740,16 @@ export class DatabaseManager {
 
       // 4. 根据发帖速率确定频率分组和下次运行时间
       let frequencyGroup = 'medium';
-      let nextRunHours = 4; // 默认4小时
+      let nextRunHours = 4.5; // 默认4.5小时（留出缓冲时间）
 
       if (avgPostsPerDay > 5) {
         // 高频用户：平均每天 >5 条
         frequencyGroup = 'high';
-        nextRunHours = 2;
+        nextRunHours = 2.5;  // 2.5小时（避免与 GitHub Actions 2小时触发冲突）
       } else if (avgPostsPerDay < 1) {
         // 低频用户：平均每天 <1 条
         frequencyGroup = 'low';
-        nextRunHours = 6;
+        nextRunHours = 6.5;  // 6.5小时（避免与 GitHub Actions 6小时触发冲突）
       }
 
       // 5. 计算下次运行时间（北京时间 8-24点）

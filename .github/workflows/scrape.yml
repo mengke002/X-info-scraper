@@ -75,8 +75,8 @@ jobs:
             CRON_MINUTE=$(echo "$SCHEDULE_CRON" | awk '{print $1}')
             case $CRON_MINUTE in
               0)  FREQ="high";   BATCH_SIZE=25;;  # 高频用户
-              30) FREQ="medium"; BATCH_SIZE=35;;  # 中频用户
-              45) FREQ="low";    BATCH_SIZE=50;;  # 低频用户
+              30) FREQ="medium"; BATCH_SIZE=50;;  # 中频用户
+              45) FREQ="low";    BATCH_SIZE=90;;  # 低频用户
               *)  FREQ="all";    BATCH_SIZE=30;;
             esac
             echo "📅 触发的 cron: $SCHEDULE_CRON (分钟=$CRON_MINUTE)"

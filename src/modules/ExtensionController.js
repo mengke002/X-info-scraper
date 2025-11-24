@@ -357,14 +357,36 @@ export class ExtensionController {
       ];
 
       for (const selector of inputSelectors) {
-        const input = await this.extensionPage.$(selector);
-        if (input) {
-          await input.click({ clickCount: 3 });  // 选中全部
-          await input.type(String(maxCount));
-          console.log(`✅ 已设置数量限制: ${maxCount}`);
-          return true;
+        try {
+          // 添加超时保护
+          const input = await Promise.race([
+            this.extensionPage.$(selector),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('selector timeout')), 3000))
+          ]);
+
+          if (input) {
+            // 点击选中，添加超时
+            await Promise.race([
+              input.click({ clickCount: 3 }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('click timeout')), 2000))
+            ]);
+
+            // 输入数字，添加超时
+            await Promise.race([
+              input.type(String(maxCount)),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('type timeout')), 2000))
+            ]);
+
+            console.log(`✅ 已设置数量限制: ${maxCount}`);
+            return true;
+          }
+        } catch (selectorError) {
+          // 单个选择器失败，继续尝试下一个
+          continue;
         }
       }
+
+      console.warn(`⚠️  未找到数量输入框，跳过设置`);
     } catch (error) {
       console.warn(`⚠️  无法设置数量限制: ${error.message}`);
     }
