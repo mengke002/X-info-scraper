@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "batch": "node src/batch.js",
-    "test": "node src/test.js"
+    "test": "node src/test.js",
+    "refresh-cookies": "node refresh-cookies.js"
   },
   "keywords": [
     "twitter",

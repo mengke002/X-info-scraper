@@ -240,6 +240,7 @@ export class BrowserManager {
       console.log('🔄 降级方案: 通过 targets 识别扩展...');
       try {
         const targets = await this.browser.targets();
+        const foundExtensions = new Set();
 
         for (const target of targets) {
           const url = target.url();
@@ -250,14 +251,14 @@ export class BrowserManager {
 
               // 根据文件夹路径推断扩展类型
               for (const extPath of absoluteExtensionPaths) {
-                if (extPath.includes('TwExport')) {
+                if (extPath.includes('TwExport') && !foundExtensions.has('TwExport')) {
                   this.extensionMap['TwExport'] = extensionId;
-                  console.log(`🔗 通过路径识别 TwExport (ID: ${extensionId})`);
-                  break;
-                } else if (extPath.includes('Twitter Export Follower')) {
+                  foundExtensions.add('TwExport');
+                  console.log(`🔗 通过 targets 识别 TwExport (ID: ${extensionId})`);
+                } else if (extPath.includes('Twitter Export Follower') && !foundExtensions.has('Twitter Export Follower')) {
                   this.extensionMap['Twitter Export Follower'] = extensionId;
-                  console.log(`🔗 通过路径识别 Twitter Export Follower (ID: ${extensionId})`);
-                  break;
+                  foundExtensions.add('Twitter Export Follower');
+                  console.log(`🔗 通过 targets 识别 Twitter Export Follower (ID: ${extensionId})`);
                 }
               }
             }
@@ -265,6 +266,56 @@ export class BrowserManager {
         }
       } catch (error) {
         console.error('❌ 通过 targets 识别扩展时出错:', error.message);
+      }
+    }
+
+    // 方法3: 通过读取 manifest.json 获取扩展 ID（最终降级方案）
+    if (Object.keys(this.extensionMap).length === 0) {
+      console.log('🔄 最终降级方案: 通过 manifest.json 中的 key 计算扩展 ID...');
+      try {
+        const fs = await import('fs');
+        const crypto = await import('crypto');
+        const pathModule = await import('path');
+
+        for (const extPath of absoluteExtensionPaths) {
+          // 检查扩展目录是否存在
+          if (!fs.existsSync(extPath)) {
+            console.error(`❌ 扩展目录不存在: ${extPath}`);
+            continue;
+          }
+
+          const manifestPath = pathModule.join(extPath, 'manifest.json');
+          if (fs.existsSync(manifestPath)) {
+            const manifestContent = fs.readFileSync(manifestPath, 'utf8');
+            const manifest = JSON.parse(manifestContent);
+
+            // 如果 manifest.json 中有 key 字段，可以计算出扩展 ID
+            if (manifest.key) {
+              // Chrome 扩展 ID 计算: SHA256(publicKey).slice(0, 32).map(byte => 'a' + byte % 26)
+              const publicKeyDer = Buffer.from(manifest.key, 'base64');
+              const hash = crypto.createHash('sha256').update(publicKeyDer).digest();
+
+              // 转换为扩展 ID（前16字节，每个字节映射为 a-p）
+              const extensionId = Array.from(hash.slice(0, 16))
+                .map(byte => String.fromCharCode(97 + (byte % 16)))
+                .join('');
+
+              if (extPath.includes('TwExport')) {
+                this.extensionMap['TwExport'] = extensionId;
+                console.log(`🔗 通过 manifest.json 计算 TwExport ID: ${extensionId}`);
+              } else if (extPath.includes('Twitter Export Follower')) {
+                this.extensionMap['Twitter Export Follower'] = extensionId;
+                console.log(`🔗 通过 manifest.json 计算 Twitter Export Follower ID: ${extensionId}`);
+              }
+            } else {
+              console.warn(`⚠️  ${extPath} 的 manifest.json 中没有 key 字段`);
+            }
+          } else {
+            console.error(`❌ manifest.json 不存在: ${manifestPath}`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ 通过 manifest.json 计算扩展 ID 失败:', error.message);
       }
     }
 
