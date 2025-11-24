@@ -54,15 +54,18 @@ export class TwitterAuth {
         await this.browser.logPageInfo();
 
         // 查找通用的文本输入框 (通常用于验证手机号或用户名)
-        // 优先找 data-testid，如果没有找 input[name="text"]
-        const inputSelector = 'input[data-testid="ocfEnterTextTextInput"]';
-        let verificationInput = await this.browser.page.$(inputSelector);
-        if (!verificationInput) {
-             // 尝试另一个选择器
+        let actualInputSelector = '';
+        let verificationInput = await this.browser.page.$('input[data-testid="ocfEnterTextTextInput"]');
+        if (verificationInput) {
+            actualInputSelector = 'input[data-testid="ocfEnterTextTextInput"]';
+        } else {
              verificationInput = await this.browser.page.$('input[name="text"]');
+             if (verificationInput) {
+                 actualInputSelector = 'input[name="text"]';
+             }
         }
 
-        if (verificationInput) {
+        if (verificationInput && actualInputSelector) {
             console.log('🔍 检测到中间验证输入框...');
             
             // 策略：
@@ -85,8 +88,7 @@ export class TwitterAuth {
             }
 
             console.log(`📝 正在中间验证框中输入: ${valueToType.substring(0, 3)}***`);
-            // 重新获取元素以确保它仍然有效
-            await this.browser.type(inputSelector, valueToType);
+            await this.browser.type(actualInputSelector, valueToType); // 使用实际匹配到的选择器
             await this.browser.page.keyboard.press('Enter');
             await this.sleep(3000); // 等待验证通过
         } else {
