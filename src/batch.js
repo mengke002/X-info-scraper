@@ -203,6 +203,12 @@ class BatchTwitterScraper {
     // 默认下载路径（Chrome）
     const downloadDir = path.join(process.env.HOME || process.env.USERPROFILE, 'Downloads');
 
+    // 确保 Downloads 目录存在（CI 环境可能没有）
+    if (!fs.existsSync(downloadDir)) {
+      fs.mkdirSync(downloadDir, { recursive: true });
+      console.log(`📁 创建下载目录: ${downloadDir}`);
+    }
+
     // 可能的文件名模式（扩展可能使用不同的命名）
     // TwExport 格式: TwExport_{username}_{Type}.csv (Type 首字母大写)
     const typeCapitalized = type.charAt(0).toUpperCase() + type.slice(1);

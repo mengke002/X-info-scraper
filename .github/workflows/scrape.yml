@@ -85,37 +85,23 @@ jobs:
         run: npm ci
 
       # 运行采集任务
-      - name: Run scraper (Batch Mode)
+      - name: Run scraper
         if: github.event.inputs.mode == 'batch' || github.event_name == 'schedule'
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_FREQ: ${{ github.event.inputs.frequency_group || 'all' }}
+          INPUT_BATCH: ${{ github.event.inputs.batch_size || '20' }}
         run: |
-          # 根据定时任务时间确定频率组
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            # 获取当前 UTC 时间的分钟数来判断是哪个 cron 触发的
+          # 定时任务根据分钟数确定频率组
+          if [ "$EVENT_NAME" = "schedule" ]; then
             MINUTE=$(date -u +%M)
-
-            echo "Current UTC minute: $MINUTE"
-
-            # 0分 -> high, 30分 -> medium, 45分 -> low
-            if [ "$MINUTE" -eq "0" ]; then
-              FREQ="high"
-            elif [ "$MINUTE" -eq "30" ]; then
-              FREQ="medium"
-            elif [ "$MINUTE" -eq "45" ]; then
-              FREQ="low"
-            else
-              FREQ="all"
-            fi
+            case $MINUTE in 0|00) FREQ="high";; 30) FREQ="medium";; 45) FREQ="low";; *) FREQ="all";; esac
           else
-            FREQ="${{ github.event.inputs.frequency_group || 'all' }}"
+            FREQ="$INPUT_FREQ"
           fi
-
-          BATCH_SIZE="${{ github.event.inputs.batch_size || '20' }}"
-
-          echo "📊 Running batch scraper:"
-          echo "  - Frequency group: $FREQ"
-          echo "  - Batch size: $BATCH_SIZE"
-
-          npm run batch -- --batch-size=$BATCH_SIZE --frequency=$FREQ
+          echo "🚀 频率组: $FREQ, 批次大小: $INPUT_BATCH"
+          npm run batch -- --batch-size=$INPUT_BATCH --frequency=$FREQ
 
       # 清理和检查
       - name: Cleanup and check output

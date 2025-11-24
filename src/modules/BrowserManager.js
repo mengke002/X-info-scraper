@@ -114,7 +114,8 @@ export class BrowserManager {
 
     this.browser = await puppeteer.launch({
       headless: this.config.browser.headless,
-      executablePath: executablePath, // 显式指定路径 (如果找到)
+      executablePath: executablePath,
+      protocolTimeout: 180000, // 增加到 3 分钟，解决超时问题
       args: [
         ...args,
         // 关键修复：Linux/CI 环境下必须的参数
