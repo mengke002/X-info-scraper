@@ -53,6 +53,7 @@ jobs:
       HEADLESS: true
       # Webhook URL (用于失败通知)
       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      TWITTER_COOKIES_JSON: ${{ secrets.TWITTER_COOKIES_JSON }} # 新增: Twitter Cookies JSON
 
     steps:
       - name: Checkout code

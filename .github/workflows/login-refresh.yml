@@ -15,6 +15,7 @@ jobs:
       TWITTER_USERNAME: ${{ secrets.TWITTER_USERNAME }}
       TWITTER_PASSWORD: ${{ secrets.TWITTER_PASSWORD }}
       TWITTER_HANDLE: ${{ secrets.TWITTER_HANDLE }} # 新增: 用户名 Handle
+      TWITTER_COOKIES_JSON: ${{ secrets.TWITTER_COOKIES_JSON }} # 新增: Twitter Cookies JSON
       DB_ENABLED: 'false' # 此工作流不需要数据库
       # 如果有手机号验证需求，也可以配置 TWITTER_PHONE
       # TWITTER_PHONE: ${{ secrets.TWITTER_PHONE }}
