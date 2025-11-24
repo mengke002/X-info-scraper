@@ -139,46 +139,59 @@ class BatchTwitterScraper {
   }
 
   /**
-   * 为单个用户采集数据 (串行模式优化版)
+   * 为单个用户采集数据 (串行模式优化版 - 增强错误处理)
    */
   async collectForUser(user) {
     const { username, type, maxCount } = user;
+    let dashboardPage = null;
 
-    // 1. 自动配置插件（传入username和type）
-    await this.extensionCtrl.autoConfigureExtension(type, maxCount, username);
-
-    // 2. 开始导出并监控进度
-    const dashboardPage = await this.extensionCtrl.startExport();
-    if (!dashboardPage) {
-      throw new Error('无法启动导出');
-    }
-
-    // 3. 监控进度（传入dashboard页面和目标数量）
-    await this.extensionCtrl.monitorProgress(dashboardPage, maxCount);
-
-    // 4. 点击导出按钮下载数据
-    await this.extensionCtrl.clickExportButton(dashboardPage);
-
-    // 等待下载开始
-    await this.sleep(1000);
-
-    // 5. 读取下载的文件
-    let rawData = await this.readDownloadedFile(username, type);
-    console.log(`📊 读取到 ${rawData.length} 条原始数据`);
-
-    // 6. 关闭dashboard页面
     try {
-      await dashboardPage.close();
-    } catch (e) {
-      // 忽略关闭错误
+      // 1. 自动配置插件
+      await this.extensionCtrl.autoConfigureExtension(type, maxCount, username);
+
+      // 2. 开始导出并监控进度
+      dashboardPage = await this.extensionCtrl.startExport();
+      if (!dashboardPage) {
+        throw new Error('无法启动导出');
+      }
+
+      // 3. 监控进度（最多等待60秒）
+      await this.extensionCtrl.monitorProgress(dashboardPage, maxCount);
+
+      // 4. 点击导出按钮下载数据（即使失败也继续）
+      await this.extensionCtrl.clickExportButton(dashboardPage);
+
+      // 等待下载开始
+      await this.sleep(1000);
+
+      // 5. 读取下载的文件
+      let rawData = await this.readDownloadedFile(username, type);
+
+      if (rawData.length === 0) {
+        console.log(`⚠️  未采集到数据，跳过`);
+        return { total: 0, new: 0, updated: 0 };
+      }
+
+      console.log(`📊 读取到 ${rawData.length} 条原始数据`);
+
+      // 6. 增量处理 - 合并新旧数据（数据已入库）
+      const result = await this.incrementalCollector.processCollectedData(username, type, rawData);
+
+      return result;
+
+    } finally {
+      // 7. 无论成功失败，都要关闭dashboard页面
+      if (dashboardPage) {
+        try {
+          if (!dashboardPage.isClosed()) {
+            await dashboardPage.close();
+            console.log(`🗑️  已关闭 Dashboard 页面`);
+          }
+        } catch (e) {
+          console.warn(`⚠️  关闭 Dashboard 页面失败: ${e.message}`);
+        }
+      }
     }
-
-    // 7. 增量处理 - 合并新旧数据（数据已入库）
-    const result = await this.incrementalCollector.processCollectedData(username, type, rawData);
-
-    // ✅ 数据已入库，不再导出 CSV/JSON 文件
-
-    return result;
   }
 
   /**

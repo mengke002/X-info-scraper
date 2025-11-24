@@ -506,62 +506,74 @@ export class ExtensionController {
     console.log(`📊 监控导出进度${targetCount ? ` (目标: ${targetCount}条)` : ''}...`);
 
     // 先尝试关闭升级弹窗
-    await this.closeUpgradeDialog(dashboardPage);
+    await this.closeUpgradeDialog(dashboardPage).catch(() => {});
 
     const startTime = Date.now();
+    const maxWaitTime = 60000; // 最长等待60秒，无论如何都要尝试导出
     let lastCount = 0;
     let noProgressCount = 0;
-    let stableCount = 0; // 连续相同计数的次数
-    const maxNoProgress = 30; // 60秒无变化视为完成（增加等待时间）
-    const maxStableCount = 20; // 计数稳定40秒才视为完成（给插件更多时间加载下一批）
+    let stableCount = 0;
+    const maxNoProgress = 20; // 20秒无进展就停止
+    const maxStableCount = 15; // 15秒稳定就停止
 
     while (true) {
       try {
+        // 检查是否超过最长等待时间
+        const elapsed = Date.now() - startTime;
+        if (elapsed > maxWaitTime) {
+          console.log(`⏱️  已等待 ${(elapsed / 1000).toFixed(1)}s，超过最长等待时间`);
+          console.log(`   当前采集到 ${lastCount} 条数据，强制尝试导出...`);
+          break;
+        }
+
         if (!dashboardPage || dashboardPage.isClosed()) break;
 
-        await dashboardPage.bringToFront();
+        await dashboardPage.bringToFront().catch(() => {});
 
-        // 读取当前采集的数据量
-        const progress = await dashboardPage.evaluate(() => {
-          const text = document.body.textContent;
-
-          // 查找表格行数（更准确的方法）
-          const table = document.querySelector('table');
-          let rowCount = 0;
-          if (table) {
-            const rows = table.querySelectorAll('tbody tr, tr[role="row"]');
-            rowCount = rows.length;
-          }
-
-          // 查找 "Export XXX (YYY)" 按钮中的数字（支持 Posts/Replies/Following/Followers）
-          const exportButtons = Array.from(document.querySelectorAll('button'));
-          for (const btn of exportButtons) {
-            const match = btn.textContent.match(/Export\s+(?:Posts?|Replies?|Following|Followers?)\s*\((\d+)\)/i);
-            if (match) {
-              return {
-                count: parseInt(match[1]),
-                hasExportButton: true,
-                buttonText: btn.textContent.trim()
-              };
+        // 读取当前采集的数据量（加超时保护）
+        const progress = await Promise.race([
+          dashboardPage.evaluate(() => {
+            const text = document.body.textContent;
+            const table = document.querySelector('table');
+            let rowCount = 0;
+            if (table) {
+              const rows = table.querySelectorAll('tbody tr, tr[role="row"]');
+              rowCount = rows.length;
             }
-          }
 
-          // 检查是否有300条限制提示
-          const has300Limit = text.includes('You can export up to 300') ||
-                             text.includes('export up to 300 tweets only') ||
-                             text.includes('export up to 300 data entries');
+            const exportButtons = Array.from(document.querySelectorAll('button'));
+            for (const btn of exportButtons) {
+              const match = btn.textContent.match(/Export\s+(?:Posts?|Replies?|Following|Followers?)\s*\((\d+)\)/i);
+              if (match) {
+                return {
+                  count: parseInt(match[1]),
+                  hasExportButton: true,
+                  buttonText: btn.textContent.trim()
+                };
+              }
+            }
 
-          // 检查是否正在采集
-          const isExtracting = text.includes('Extracting') ||
-                              text.includes('Please wait');
+            const has300Limit = text.includes('You can export up to 300') ||
+                               text.includes('export up to 300 tweets only') ||
+                               text.includes('export up to 300 data entries');
 
-          return {
-            count: rowCount || 0,
-            hasExportButton: false,
-            has300Limit,
-            isExtracting
-          };
-        });
+            const isExtracting = text.includes('Extracting') ||
+                                text.includes('Please wait');
+
+            return {
+              count: rowCount || 0,
+              hasExportButton: false,
+              has300Limit,
+              isExtracting
+            };
+          }).catch(() => ({ count: 0, hasExportButton: false, has300Limit: false, isExtracting: false })),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('evaluate timeout')), 5000))
+        ]).catch(() => ({
+          count: lastCount, // 超时时使用上次的值
+          hasExportButton: false,
+          has300Limit: false,
+          isExtracting: false
+        }));
 
         const currentCount = progress.count;
 
@@ -573,7 +585,6 @@ export class ExtensionController {
           noProgressCount = 0;
           stableCount = 0;
         } else if (currentCount > 0 && currentCount === lastCount) {
-          // 如果正在采集中，即使数量相同也重置稳定计数（可能在加载下一批）
           if (progress.isExtracting) {
             stableCount = 0;
           } else {
@@ -595,22 +606,19 @@ export class ExtensionController {
           shouldStop = true;
           stopReason = '已达到300条限制（免费版限制）';
         }
-        // 优先级3: 如果有目标数量但未达到，需要更长时间无进展才停止
-        else if (targetCount && currentCount < targetCount) {
-          // 只有在真正长时间无进展时才停止
-          if (!progress.isExtracting && noProgressCount > maxNoProgress) {
-            shouldStop = true;
-            stopReason = `长时间无进展，当前 ${currentCount}/${targetCount} 条`;
-          }
+        // 优先级3: 长时间无进展
+        else if (!progress.isExtracting && noProgressCount > maxNoProgress) {
+          shouldStop = true;
+          stopReason = `${noProgressCount}秒无进展，当前 ${currentCount} 条`;
         }
-        // 优先级4: 没有目标数量时，数量稳定即可停止
+        // 优先级4: 数量稳定
         else if (!targetCount && stableCount >= maxStableCount && currentCount > 0) {
           shouldStop = true;
-          stopReason = '数量稳定，未设置目标数量';
+          stopReason = '数量稳定';
         }
 
         if (shouldStop) {
-          console.log(`✅ 采集完成! 共 ${currentCount} 条数据`);
+          console.log(`✅ 监控完成! 共 ${currentCount} 条数据`);
           if (stopReason) {
             console.log(`   停止原因: ${stopReason}`);
           }
@@ -618,23 +626,23 @@ export class ExtensionController {
         }
 
         if (progress.isExtracting) {
-          noProgressCount = 0; // 正在采集，重置计数
+          noProgressCount = 0;
         } else {
           noProgressCount++;
         }
 
-        // 等待后继续检查
         await this.sleep(1000);
 
       } catch (error) {
-        console.error('❌ 监控进度时出错:', error.message);
-        break;
+        console.warn(`⚠️  监控出错: ${error.message}，尝试继续...`);
+        // 不要直接 break，继续尝试
+        await this.sleep(1000);
       }
     }
   }
 
   /**
-   * 点击 Export 按钮触发下载
+   * 点击 Export 按钮触发下载（增强错误处理）
    */
   async clickExportButton(page = null) {
     console.log('💾 点击导出按钮...');
@@ -642,45 +650,48 @@ export class ExtensionController {
 
     try {
       if (!targetPage || targetPage.isClosed()) {
-        console.warn('⚠️ 页面已关闭，无法点击导出按钮');
+        console.warn('⚠️  页面已关闭，无法点击导出按钮');
         return false;
       }
 
-      await targetPage.bringToFront();
+      await targetPage.bringToFront().catch(() => {});
 
       // 先尝试关闭升级弹窗
-      await this.closeUpgradeDialog(targetPage);
+      await this.closeUpgradeDialog(targetPage).catch(() => {});
 
-      // 设置下载行为（允许下载到默认目录）
+      // 设置下载行为
       const client = await targetPage.target().createCDPSession();
       const downloadPath = process.env.HOME + '/Downloads';
       await client.send('Page.setDownloadBehavior', {
         behavior: 'allow',
         downloadPath: downloadPath
-      });
+      }).catch(() => {});
 
-      // 点击 "Export Posts (XXX)" 或 "Export Replies (XXX)" 或 "Export Following (XXX)" 按钮
-      const clicked = await targetPage.evaluate(() => {
-        const buttons = document.querySelectorAll('button');
-        for (const btn of buttons) {
-          if (btn.textContent.match(/Export\s+(?:Posts?|Replies?|Following|Followers?)\s*\(\d+\)/i)) {
-            btn.click();
-            return true;
+      // 点击导出按钮（加超时保护）
+      const clicked = await Promise.race([
+        targetPage.evaluate(() => {
+          const buttons = document.querySelectorAll('button');
+          for (const btn of buttons) {
+            if (btn.textContent.match(/Export\s+(?:Posts?|Replies?|Following|Followers?)\s*\(\d+\)/i)) {
+              btn.click();
+              return true;
+            }
           }
-        }
-        return false;
-      });
+          return false;
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('click timeout')), 5000))
+      ]).catch(() => false);
 
       if (clicked) {
         console.log('✅ 已点击导出按钮，等待下载...');
-        await this.sleep(2000); // 等待下载开始
+        await this.sleep(2000);
         return true;
       }
 
-      console.warn('⚠️  未找到导出按钮');
+      console.warn('⚠️  未找到导出按钮，可能已经下载');
       return false;
     } catch (error) {
-      console.error('❌ 点击导出按钮失败:', error.message);
+      console.warn(`⚠️  点击导出按钮出错: ${error.message}`);
       return false;
     }
   }
