@@ -690,7 +690,7 @@ export class DatabaseManager {
     try {
       // 1. 获取任务的历史数据
       const [rows] = await connection.query(
-        `SELECT last_post_count, updated_at, frequency_group
+        `SELECT last_post_count, updated_at, frequency_group, avg_posts_per_day
          FROM scrape_tasks
          WHERE id = ?`,
         [taskId]
@@ -708,7 +708,15 @@ export class DatabaseManager {
 
       // 2. 计算新增帖子数和平均发帖速率
       const newPosts = Math.max(0, totalPostCount - lastCount);
-      const avgPostsPerDay = daysSinceUpdate > 0 ? newPosts / daysSinceUpdate : 0;
+
+      // 关键修复：如果间隔时间太短（<0.5天），使用历史平均值或保守估计
+      let avgPostsPerDay;
+      if (daysSinceUpdate < 0.5) {
+        // 间隔太短，保留历史值或使用保守估计
+        avgPostsPerDay = task.avg_posts_per_day || (newPosts > 0 ? 5 : 1);
+      } else {
+        avgPostsPerDay = newPosts / daysSinceUpdate;
+      }
 
       // 3. 根据发帖速率确定频率分组和下次运行时间
       let frequencyGroup = 'medium';

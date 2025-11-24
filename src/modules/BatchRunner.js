@@ -27,11 +27,10 @@ export class BatchRunner {
       throw new Error('数据库未初始化');
     }
 
-    console.log(`📋 从数据库加载采集任务 (频率组: ${frequencyGroup}, 随机抽取 ${limit} 个用户)...`);
     const tasks = await this.database.getPendingTasksByFrequency(frequencyGroup, limit);
 
     if (tasks.length === 0) {
-      console.log(`⚠️  数据库中没有频率组 [${frequencyGroup}] 的待执行任务`);
+      console.log(`⚠️  没有待执行任务 (频率组: ${frequencyGroup})`);
       return [];
     }
 
@@ -47,7 +46,7 @@ export class BatchRunner {
 
     // 统计用户数
     const uniqueUsers = new Set(tasks.map(t => t.username)).size;
-    console.log(`✅ 从数据库加载了 ${uniqueUsers} 个用户的 ${users.length} 个待执行任务`);
+    console.log(`📋 加载 ${uniqueUsers} 个用户, ${users.length} 个任务 (频率: ${frequencyGroup})\n`);
     return users;
   }
 
@@ -113,10 +112,6 @@ export class BatchRunner {
   async run(options = {}) {
     this.startTime = Date.now();
 
-    console.log('╔════════════════════════════════════════╗');
-    console.log('║   Twitter 批量数据采集器 (串行模式)    ║');
-    console.log('╚════════════════════════════════════════╝\n');
-
     try {
       // 1. 加载任务列表（支持频率分组）
       let users;
@@ -125,7 +120,6 @@ export class BatchRunner {
         const limit = options.limit || 100;
         users = await this.loadTasksFromDatabase(limit, frequencyGroup);
       } else {
-        console.log('📄 使用文件模式加载任务列表');
         users = this.loadUserList(options.userListFile);
       }
 
@@ -145,8 +139,6 @@ export class BatchRunner {
         return this.generateReport();
       }
 
-      console.log(`\n📊 将处理 ${totalUsers} 个任务\n`);
-
       // 2. 串行处理每个任务
       let completedCount = 0;
       for (const user of pendingUsers) {
@@ -158,7 +150,7 @@ export class BatchRunner {
             await this.database.updateTaskStatus(user.taskId, 'running');
           }
 
-          console.log(`\n🚀 [${completedCount + 1}/${totalUsers}] 采集任务: @${user.username} (${user.type})`);
+          console.log(`[${completedCount + 1}/${totalUsers}] @${user.username} (${user.type})`);
 
           // 执行采集（一次性完成：配置→采集→下载→入库）
           const result = await this.scraper.collectForUser(user);
@@ -177,18 +169,15 @@ export class BatchRunner {
 
           // 更新数据库状态为completed，并更新频率分组
           if (this.database && user.taskId) {
-            // 更新用户发帖频率分组（自动计算下次运行时间）
             await this.database.updateUserFrequency(user.taskId, result.total || 0);
-
-            // 更新任务状态为completed
             await this.database.updateTaskStatus(user.taskId, 'completed');
           }
 
           const elapsed = ((Date.now() - taskStartTime) / 1000).toFixed(1);
-          console.log(`✅ 完成 (用时: ${elapsed}秒，进度: ${completedCount}/${totalUsers})`);
+          console.log(`    ✅ +${result.new || 0} 新, ${result.total || 0} 总 (${elapsed}s)\n`);
 
         } catch (error) {
-          console.error(`❌ 任务失败 @${user.username}:`, error.message);
+          console.error(`    ❌ 失败: ${error.message}\n`);
 
           this.results.push({
             username: user.username,

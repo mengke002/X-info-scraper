@@ -4,14 +4,6 @@ on:
   # 手动触发
   workflow_dispatch:
     inputs:
-      mode:
-        description: 'Run mode'
-        required: true
-        default: 'batch'
-        type: choice
-        options:
-          - batch
-          - single
       batch_size:
         description: 'Batch size (random N users from database)'
         required: false
@@ -23,38 +15,29 @@ on:
         type: choice
         options:
           - all
-          - high     # 高频用户 (每6小时)
-          - medium   # 中频用户 (每天)
-          - low      # 低频用户 (每周)
+          - high     # 高频用户 (每2小时)
+          - medium   # 中频用户 (每4小时)
+          - low      # 低频用户 (每6小时)
 
   # 自动定时任务（北京时间 8-24点）
   schedule:
     # 高频用户：每2小时 (北京时间 8, 10, 12, 14, 16, 18, 20, 22点)
-    # UTC 时间: 0, 2, 4, 6, 8, 10, 12, 14
     - cron: '0 0,2,4,6,8,10,12,14 * * *'
-
     # 中频用户：每4小时 (北京时间 8, 12, 16, 20点)
-    # UTC 时间: 0, 4, 8, 12
     - cron: '30 0,4,8,12 * * *'
-
     # 低频用户：每6小时 (北京时间 8, 14, 20点)
-    # UTC 时间: 0, 6, 12
     - cron: '45 0,6,12 * * *'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 最长运行2小时
+    timeout-minutes: 120
 
     env:
-      # 数据库连接（从 Secrets 读取）
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      # 无头模式（GitHub Actions 必须启用）
       HEADLESS: true
-      # Webhook URL (用于失败通知)
       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-      TWITTER_COOKIES_JSON: ${{ secrets.TWITTER_COOKIES_JSON }} # 新增: Twitter Cookies JSON
-      # 扩展路径（CI 环境使用当前目录）
+      TWITTER_COOKIES_JSON: ${{ secrets.TWITTER_COOKIES_JSON }}
       EXT_TWEET_PATH: ./TwExport/2.6.0_0
       EXT_FOLLOWER_PATH: ./Twitter Export Follower/3.8.0_0
 
@@ -64,16 +47,10 @@ jobs:
         with:
           fetch-depth: 1
 
-      # 安装 Chrome 浏览器（GitHub Actions 环境）
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@latest
         with:
           chrome-version: stable
-
-      - name: Verify Chrome installation
-        run: |
-          which google-chrome-stable || which google-chrome || which chromium
-          google-chrome-stable --version || google-chrome --version || chromium --version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -84,9 +61,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 运行采集任务
       - name: Run scraper
-        if: github.event.inputs.mode == 'batch' || github.event_name == 'schedule'
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -103,53 +78,6 @@ jobs:
           echo "🚀 频率组: $FREQ, 批次大小: $INPUT_BATCH"
           npm run batch -- --batch-size=$INPUT_BATCH --frequency=$FREQ
 
-      # 清理和检查
-      - name: Cleanup and check output
-        if: always()
-        run: |
-          # 清理 node_modules（不需要提交）
-          rm -rf node_modules
-
-          # 检查输出文件
-          echo "📄 Output files:"
-          ls -lh output/ || echo "No output files"
-
-          # 检查批量报告
-          if [ -f "output/batch-report.json" ]; then
-            echo "📊 Batch report preview:"
-            head -n 30 output/batch-report.json
-          fi
-
-      # 提交更新的数据（可选）
-      - name: Commit updates
-        if: success()
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-
-          # 只提交输出文件和报告，不提交 profile（太大且会被 cache）
-          git add output/ || true
-          git add logs/ || true
-
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "🤖 Auto-update: Scraper run #${{ github.run_number }} [skip ci]"
-            git push
-          fi
-
-      # 上传输出文件（30天保留）
-      - name: Upload output artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scraper-output-${{ github.run_number }}
-          path: |
-            output/
-            logs/
-          retention-days: 30
-
-      # 失败通知（可选，需要配置 WEBHOOK_URL）
       - name: Notify on failure
         if: failure() && env.WEBHOOK_URL != ''
         run: |
