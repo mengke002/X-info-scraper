@@ -17,10 +17,83 @@ export class TwitterAuth {
   }
 
   /**
+   * 注入 Cookies (从环境变量或文件)
+   */
+  async injectCookies() {
+    try {
+      let cookies = [];
+      
+      // 1. 优先从环境变量读取 (GitHub Actions 场景)
+      if (process.env.TWITTER_COOKIES_JSON) {
+        console.log('🍪 检测到 TWITTER_COOKIES_JSON 环境变量，正在注入...');
+        try {
+            cookies = JSON.parse(process.env.TWITTER_COOKIES_JSON);
+        } catch (e) {
+            console.error('❌ 解析 TWITTER_COOKIES_JSON 失败:', e.message);
+            return false;
+        }
+      } 
+      
+      if (cookies.length > 0) {
+          // 确保 cookies 是数组
+          if (!Array.isArray(cookies)) {
+              cookies = [cookies];
+          }
+          
+          // 访问 Twitter 域，确保 Cookie 能被正确设置
+          // 必须先访问页面，puppeteer 才能设置该域名的 cookie
+          if (this.browser.page.url() === 'about:blank') {
+              await this.browser.goto('https://twitter.com', { waitUntil: 'domcontentloaded' });
+          }
+          
+          await this.browser.page.setCookie(...cookies);
+          console.log(`✅ 已注入 ${cookies.length} 个 Cookies`);
+          return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ 注入 Cookies 失败:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 导出 Cookies 到文件 (仅用于本地生成)
+   */
+  async exportCookies() {
+      try {
+          const cookies = await this.browser.page.cookies();
+          const fs = await import('fs');
+          const path = await import('path');
+          
+          const outputPath = path.resolve(process.cwd(), 'twitter-cookies.json');
+          fs.writeFileSync(outputPath, JSON.stringify(cookies, null, 2));
+          
+          console.log(`\n🍪 Cookies 已导出到: ${outputPath}`);
+          console.log('💡 请将此文件内容复制到 GitHub Secrets 的 TWITTER_COOKIES_JSON 变量中');
+      } catch (error) {
+          console.error('❌ 导出 Cookies 失败:', error.message);
+      }
+  }
+
+  /**
    * 自动登录Twitter
    */
   async login() {
     console.log('🔐 开始Twitter登录流程...');
+
+    // --- 尝试注入 Cookie 登录 ---
+    if (await this.injectCookies()) {
+        console.log('🍪 Cookies 注入完成，验证登录状态...');
+        await this.browser.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded' });
+        await this.sleep(5000);
+        if (await this.verifyLogin()) {
+            console.log('✅ 通过 Cookies 登录成功!');
+            return true;
+        }
+        console.warn('⚠️ Cookies 登录失效，尝试账号密码登录...');
+    }
+    // ---------------------------
 
     try {
       // 访问Twitter登录页
@@ -115,6 +188,10 @@ export class TwitterAuth {
 
       if (isLoggedIn) {
         console.log('✅ Twitter登录成功!');
+        // 登录成功后，如果是本地环境，自动导出 Cookies
+        if (!process.env.CI) {
+            await this.exportCookies();
+        }
         return true;
       } else {
         // 截图保存失败现场
@@ -224,6 +301,9 @@ export class TwitterAuth {
    */
   async isAlreadyLoggedIn() {
     try {
+      // 尝试注入 Cookies (如果有配置)
+      await this.injectCookies();
+      
       await this.browser.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded' });
       await this.sleep(5000);  // 等待更长时间确保页面完全加载
 
