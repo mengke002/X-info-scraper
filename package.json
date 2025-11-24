@@ -1,0 +1,32 @@
+{
+  "name": "twitter-scraper",
+  "version": "2.0.0",
+  "description": "自动化Twitter数据批量采集系统 - 支持增量采集和自动化配置",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "batch": "node src/batch.js",
+    "test": "node src/test.js"
+  },
+  "keywords": [
+    "twitter",
+    "scraper",
+    "puppeteer",
+    "automation",
+    "batch"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "csv-parse": "^6.1.0",
+    "csv-writer": "^1.6.0",
+    "mysql2": "^3.15.3",
+    "ora": "^8.0.1",
+    "puppeteer": "^22.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}
