@@ -2,11 +2,12 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs'; // 导入 fs 模块
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 启用stealth插件,绕过反爬虫检测
-puppeteer.use(StealthPlugin());
+
 
 /**
  * 浏览器管理器 - 处理Puppeteer实例和插件加载
@@ -19,7 +20,6 @@ export class BrowserManager {
     this.extensionMap = {}; // 存储扩展路径到ID的映射
     
     // 确保日志目录存在
-    const fs = require('fs');
     const logDir = path.resolve(process.cwd(), this.config.logging.directory || './logs');
     if (!fs.existsSync(logDir)) {
         fs.mkdirSync(logDir, { recursive: true });
@@ -33,7 +33,6 @@ export class BrowserManager {
     if (!this.page) return;
     try {
         const content = await this.page.content();
-        const fs = require('fs');
         const filePath = path.join(process.cwd(), this.config.logging.directory || './logs', filename);
         fs.writeFileSync(filePath, content);
         console.log(`📄 页面 HTML 已保存: ${filePath}`);
