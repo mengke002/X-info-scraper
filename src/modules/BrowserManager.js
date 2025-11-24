@@ -126,6 +126,7 @@ export class BrowserManager {
         '--mute-audio', // 静音
         '--no-first-run', // 跳过首次运行检查
         '--no-default-browser-check', // 跳过默认浏览器检查
+        '--log-level=3', // 关键：只显示 FATAL 级别的日志，屏蔽 D-Bus, UPower, ALSA 错误
         `--user-data-dir=${userDataDir}` // 显式在 args 中也指定一次，双重保险
       ],
       defaultViewport: this.config.browser.viewport,
