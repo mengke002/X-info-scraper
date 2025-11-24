@@ -67,12 +67,55 @@ export class BrowserManager {
     // 添加日志输出，确认正在加载哪些扩展
     console.log(`📦 尝试加载扩展: ${absoluteExtensionPaths.join(', ')}`);
 
+    // 确定 Chrome 可执行文件路径
+    let executablePath = null;
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      console.log(`🔧 使用环境变量指定的 Chrome: ${executablePath}`);
+    } else if (process.platform === 'linux') {
+      // 在 Linux (GitHub Actions) 环境下，尝试查找常见的 Chrome 路径
+      try {
+        const { execSync } = await import('child_process');
+        const possiblePaths = [
+          '/usr/bin/google-chrome',
+          '/usr/bin/google-chrome-stable',
+          '/usr/bin/chromium',
+          '/usr/bin/chromium-browser'
+        ];
+        for (const p of possiblePaths) {
+          try {
+            execSync(`which ${p.split('/').pop()}`); // 简单检查命令是否存在
+            if (require('fs').existsSync(p)) {
+              executablePath = p;
+              console.log(`🐧 在 Linux 上找到 Chrome: ${executablePath}`);
+              break;
+            }
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        console.warn('⚠️ 查找 Chrome 路径失败:', e.message);
+      }
+    }
+
+    // 确保 userDataDir 是绝对路径
+    const userDataDir = path.resolve(process.cwd(), this.config.browser.userDataDir);
+    console.log(`📂 User Data Directory: ${userDataDir}`);
+
     this.browser = await puppeteer.launch({
       headless: this.config.browser.headless,
-      args,
+      executablePath: executablePath, // 显式指定路径 (如果找到)
+      args: [
+        ...args,
+        // 关键修复：Linux/CI 环境下必须的参数
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // 防止共享内存不足崩溃
+        '--disable-gpu', // Headless 模式通常不需要 GPU
+        `--user-data-dir=${userDataDir}` // 显式在 args 中也指定一次，双重保险
+      ],
       defaultViewport: this.config.browser.viewport,
       slowMo: this.config.browser.slowMo,
-      userDataDir: this.config.browser.userDataDir,
+      userDataDir: userDataDir, // Puppeteer 选项
       ignoreDefaultArgs: ['--enable-automation', '--enable-blink-features=AutomationControlled'],
     });
 
