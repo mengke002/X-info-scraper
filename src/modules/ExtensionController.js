@@ -420,10 +420,8 @@ export class ExtensionController {
     // 3. 选择类型
     const typeSelected = await this.selectExportType(type);
 
-    // 4. 设置数量限制
-    if (maxCount) {
-      await this.setMaxCount(maxCount);
-    }
+    // 4. 数量限制通过监控控制 (插件不支持预设数量)
+    // maxCount 将在 monitorProgress() 中作为监控目标使用
 
     // 5. 等待UI稳定
     await this.sleep(500);
