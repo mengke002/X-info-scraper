@@ -53,30 +53,29 @@ export class TwitterAuth {
         // 再次打印页面状态，确认是否卡住
         await this.browser.logPageInfo();
 
-        // 检查是否是手机号验证
-        const phoneInput = await this.browser.page.$('input[data-testid="ocfEnterTextTextInput"]');
-        if (phoneInput && this.credentials.phone) {
-            console.log('📱 输入手机号进行验证...');
-            await this.browser.type('input[data-testid="ocfEnterTextTextInput"]', this.credentials.phone);
-            await this.browser.page.keyboard.press('Enter');
-            await this.sleep(2000);
-        } else {
-            // 检查是否是再次确认用户名 (Twitter 针对异地登录常有此步骤)
-            const unusualActivityHeader = await this.browser.page.$('div[data-testid="ocfHeader"]');
-            if (unusualActivityHeader) {
-                 const text = await this.browser.page.evaluate(el => el.textContent, unusualActivityHeader);
-                 if (text.includes('unusual activity') || text.includes('phone number')) {
-                     console.log('⚠️ 检测到异常活动验证，尝试输入用户名或手机号...');
-                     const input = await this.browser.page.$('input[data-testid="ocfEnterTextTextInput"]');
-                     if (input) {
-                         // 优先尝试输入手机号，如果没有则再次输入用户名
-                         const val = this.credentials.phone || this.credentials.username;
-                         await this.browser.type('input[data-testid="ocfEnterTextTextInput"]', val);
-                         await this.browser.page.keyboard.press('Enter');
-                         await this.sleep(2000);
-                     }
-                 }
+        // 查找通用的文本输入框 (通常用于验证手机号或用户名)
+        // 优先找 data-testid，如果没有找 input[name="text"]
+        const verificationInput = await this.browser.page.$('input[data-testid="ocfEnterTextTextInput"]') || 
+                                  await this.browser.page.$('input[name="text"]');
+
+        if (verificationInput) {
+            console.log('🔍 检测到中间验证输入框...');
+            
+            // 获取输入框的 placeholder 或相关文本，帮助判断需要输入什么
+            // 这里简单处理：如果有手机号配置，优先试手机号；否则试用户名
+            const valToType = this.credentials.phone || this.credentials.username;
+            
+            console.log(`👉 尝试输入验证信息 (优先手机号，否则用户名): ${valToType ? '******' : '无'}`);
+            
+            if (valToType) {
+                await verificationInput.type(valToType);
+                await this.browser.page.keyboard.press('Enter');
+                await this.sleep(3000); // 等待验证通过
+            } else {
+                console.warn('⚠️ 需要验证但未配置手机号，且无法确定是否需要再次输入用户名');
             }
+        } else {
+             console.log('⚠️ 未找到密码框，也未找到验证输入框，页面可能未正确加载');
         }
       }
 
