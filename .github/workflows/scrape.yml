@@ -74,10 +74,10 @@ jobs:
             # 从 cron 表达式中提取分钟数（格式: "M H * * *"）
             CRON_MINUTE=$(echo "$SCHEDULE_CRON" | awk '{print $1}')
             case $CRON_MINUTE in
-              0)  FREQ="high";   BATCH_SIZE=15;;  # 高频用户：采集频繁，每次少量
-              30) FREQ="medium"; BATCH_SIZE=25;;  # 中频用户：适中
-              45) FREQ="low";    BATCH_SIZE=30;;  # 低频用户：采集少，每次多量
-              *)  FREQ="all";    BATCH_SIZE=20;;
+              0)  FREQ="high";   BATCH_SIZE=25;;  # 高频用户
+              30) FREQ="medium"; BATCH_SIZE=35;;  # 中频用户
+              45) FREQ="low";    BATCH_SIZE=50;;  # 低频用户
+              *)  FREQ="all";    BATCH_SIZE=30;;
             esac
             echo "📅 触发的 cron: $SCHEDULE_CRON (分钟=$CRON_MINUTE)"
           else

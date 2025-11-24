@@ -509,7 +509,7 @@ export class ExtensionController {
     await this.closeUpgradeDialog(dashboardPage).catch(() => {});
 
     const startTime = Date.now();
-    const maxWaitTime = 60000; // 最长等待60秒，无论如何都要尝试导出
+    const maxWaitTime = 40000; // 最长等待40秒，无论如何都要尝试导出
     let lastCount = 0;
     let noProgressCount = 0;
     let stableCount = 0;
@@ -659,13 +659,25 @@ export class ExtensionController {
       // 先尝试关闭升级弹窗
       await this.closeUpgradeDialog(targetPage).catch(() => {});
 
-      // 设置下载行为
-      const client = await targetPage.target().createCDPSession();
-      const downloadPath = process.env.HOME + '/Downloads';
-      await client.send('Page.setDownloadBehavior', {
-        behavior: 'allow',
-        downloadPath: downloadPath
-      }).catch(() => {});
+      // 设置下载行为（添加超时保护）
+      try {
+        const client = await Promise.race([
+          targetPage.target().createCDPSession(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('CDP timeout')), 3000))
+        ]);
+
+        const downloadPath = process.env.HOME + '/Downloads';
+        await Promise.race([
+          client.send('Page.setDownloadBehavior', {
+            behavior: 'allow',
+            downloadPath: downloadPath
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('setDownloadBehavior timeout')), 3000))
+        ]).catch(() => {});
+      } catch (cdpError) {
+        console.warn(`⚠️  设置下载行为失败: ${cdpError.message}`);
+        // 继续执行，不阻断流程
+      }
 
       // 点击导出按钮（加超时保护）
       const clicked = await Promise.race([
