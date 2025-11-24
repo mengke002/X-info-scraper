@@ -178,7 +178,7 @@ jobs:
       # 上传输出文件（30天保留）
       - name: Upload output artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: scraper-output-${{ github.run_number }}
           path: |
