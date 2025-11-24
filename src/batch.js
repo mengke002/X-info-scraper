@@ -82,8 +82,25 @@ class BatchTwitterScraper {
     const isLoggedIn = await this.auth.isAlreadyLoggedIn();
 
     if (!isLoggedIn) {
-      if (!this.config.twitter.username || !this.config.twitter.password) {
-        // 手动登录模式
+      console.log('⚠️ 未检测到登录状态，尝试登录...');
+
+      // 检查是否配置了自动登录凭据 (config.js 或 环境变量)
+      if (this.config.twitter.username && this.config.twitter.password) {
+        console.log('🤖 检测到账号配置，尝试自动登录...');
+        await this.auth.login();
+        
+        // 再次验证
+        const nowLoggedIn = await this.auth.verifyLogin();
+        if (!nowLoggedIn) {
+            throw new Error('自动登录尝试失败，请检查账号密码或验证步骤');
+        }
+        console.log('✅ 自动登录成功');
+      } else {
+        // 手动登录模式 (仅在非 CI 环境下提示)
+        if (process.env.CI) {
+            throw new Error('CI 环境下必须配置 TWITTER_USERNAME 和 TWITTER_PASSWORD 环境变量以自动登录');
+        }
+
         console.log('\n⚠️  未检测到登录状态，且未配置账号信息');
         console.log('📝 请在浏览器中手动登录Twitter...');
         console.log('💡 登录成功后，按回车键继续\n');
@@ -100,8 +117,6 @@ class BatchTwitterScraper {
           throw new Error('登录验证失败，请确保已成功登录');
         }
         console.log('✅ 手动登录成功！登录状态已保存，下次运行无需重新登录');
-      } else {
-        await this.auth.login();
       }
     } else {
       console.log('✅ 已登录');

@@ -26,35 +26,69 @@ export class TwitterAuth {
       // 访问Twitter登录页
       await this.browser.goto('https://twitter.com/i/flow/login');
 
-      // 等待用户名输入框
-      await this.browser.waitForSelector('input[autocomplete="username"]', { timeout: 15000 });
+      // 1. 输入用户名/邮箱
+      // 等待用户名输入框出现 (可能是 'text' 或 'email')
+      const usernameSelector = 'input[autocomplete="username"]';
+      await this.browser.waitForSelector(usernameSelector, { timeout: 20000 });
       console.log('📝 输入用户名/邮箱...');
-      await this.browser.type('input[autocomplete="username"]', this.credentials.username);
-
-      // 点击"下一步"
+      await this.browser.type(usernameSelector, this.credentials.username);
       await this.browser.page.keyboard.press('Enter');
-      await this.browser.randomDelay();
+      await this.sleep(2000);
 
-      // 处理可能的手机验证
-      await this.handlePhoneVerification();
+      // 2. 处理可能的中间验证步骤 (例如: 输入手机号或再次确认用户名)
+      // 检查是否有密码输入框，如果没有，说明有中间步骤
+      try {
+        await this.browser.waitForSelector('input[name="password"]', { timeout: 5000 });
+      } catch (e) {
+        // 没有直接出现密码框，可能需要额外验证
+        console.log('⚠️ 未检测到密码框，可能需要额外验证...');
 
-      // 输入密码
-      await this.browser.waitForSelector('input[name="password"]', { timeout: 15000 });
+        // 检查是否是手机号验证
+        const phoneInput = await this.browser.page.$('input[data-testid="ocfEnterTextTextInput"]');
+        if (phoneInput && this.credentials.phone) {
+            console.log('📱 输入手机号进行验证...');
+            await this.browser.type('input[data-testid="ocfEnterTextTextInput"]', this.credentials.phone);
+            await this.browser.page.keyboard.press('Enter');
+            await this.sleep(2000);
+        } else {
+            // 检查是否是再次确认用户名 (Twitter 针对异地登录常有此步骤)
+            const unusualActivityHeader = await this.browser.page.$('div[data-testid="ocfHeader"]');
+            if (unusualActivityHeader) {
+                 const text = await this.browser.page.evaluate(el => el.textContent, unusualActivityHeader);
+                 if (text.includes('unusual activity') || text.includes('phone number')) {
+                     console.log('⚠️ 检测到异常活动验证，尝试输入用户名或手机号...');
+                     const input = await this.browser.page.$('input[data-testid="ocfEnterTextTextInput"]');
+                     if (input) {
+                         // 优先尝试输入手机号，如果没有则再次输入用户名
+                         const val = this.credentials.phone || this.credentials.username;
+                         await this.browser.type('input[data-testid="ocfEnterTextTextInput"]', val);
+                         await this.browser.page.keyboard.press('Enter');
+                         await this.sleep(2000);
+                     }
+                 }
+            }
+        }
+      }
+
+      // 3. 输入密码
+      await this.browser.waitForSelector('input[name="password"]', { timeout: 20000 });
       console.log('🔑 输入密码...');
       await this.browser.type('input[name="password"]', this.credentials.password);
-
-      // 提交登录
       await this.browser.page.keyboard.press('Enter');
-      await this.sleep(5000);
+      
+      // 等待登录完成
+      await this.sleep(8000);
 
-      // 验证登录成功
+      // 4. 验证登录成功
       const isLoggedIn = await this.verifyLogin();
 
       if (isLoggedIn) {
         console.log('✅ Twitter登录成功!');
         return true;
       } else {
-        throw new Error('登录验证失败');
+        // 截图保存失败现场
+        await this.browser.screenshot(`login-fail-${Date.now()}.png`);
+        throw new Error('登录验证失败 - 请检查日志截图');
       }
     } catch (error) {
       console.error('❌ Twitter登录失败:', error.message);

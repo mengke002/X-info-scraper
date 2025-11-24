@@ -44,10 +44,7 @@ export default {
 
   // 浏览器配置
   browser: {
-    // 在 CI 环境下:
-    // 1. 如果使用 XVFB (USE_XVFB=true)，则必须关闭 headless (因为有虚拟屏幕)
-    // 2. 否则使用 'new' 模式的 headless
-    headless: process.env.USE_XVFB === 'true' ? false : (process.env.HEADLESS === 'true' ? 'new' : false),
+    headless: process.env.HEADLESS === 'true' ? 'new' : false,  // GitHub Actions环境使用无头模式
     slowMo: 50,  // 减慢操作速度(毫秒),更像真人
     viewport: {
       width: 1920,
