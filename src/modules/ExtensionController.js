@@ -11,6 +11,8 @@ export class ExtensionController {
     this.extensionPage = null;
     this.extensionId = null;  // 缓存插件ID
     this.currentExtensionType = null;  // 当前加载的插件类型
+    this.lastFailureTime = 0;  // 追踪上次失败时间
+    this.consecutiveFailures = 0;  // 追踪连续失败次数
   }
 
   /**
@@ -18,6 +20,38 @@ export class ExtensionController {
    */
   sleep(ms) {
     return BrowserManager.sleep(ms);
+  }
+
+  /**
+   * 强制重置插件页面（用于从异常状态恢复）
+   */
+  async resetExtensionPage() {
+    console.log('🔄 检测到异常，强制重置插件页...');
+
+    try {
+      // 关闭当前插件页
+      if (this.extensionPage && !this.extensionPage.isClosed()) {
+        await this.extensionPage.close().catch(() => {});
+      }
+
+      // 关闭所有 dashboard 页面
+      const pages = await this.browser.browser.pages();
+      for (const page of pages) {
+        const url = page.url();
+        if (url.includes('exportDashboard')) {
+          await page.close().catch(() => {});
+        }
+      }
+
+      // 重置状态
+      this.extensionPage = null;
+      this.currentExtensionType = null;
+
+      await this.sleep(1000);
+      console.log('✅ 插件页已重置');
+    } catch (error) {
+      console.warn(`⚠️  重置插件页失败: ${error.message}`);
+    }
   }
 
   /**
@@ -399,6 +433,14 @@ export class ExtensionController {
   async autoConfigureExtension(type, maxCount = null, username = null) {
     console.log(`🤖 开始自动配置插件: ${type}`);
 
+    // 检查是否需要强制重置（连续3次失败）
+    const now = Date.now();
+    if (this.consecutiveFailures >= 3 && (now - this.lastFailureTime) < 120000) {
+      console.warn(`⚠️  检测到连续 ${this.consecutiveFailures} 次失败，强制重置...`);
+      await this.resetExtensionPage();
+      this.consecutiveFailures = 0;
+    }
+
     // 1. 打开插件（传入类型以选择正确的扩展）
     //    如果插件页已经打开且是同类型，复用它；否则重新打开
     const needReopen = !this.extensionPage || this.extensionPage.isClosed() || this.currentExtensionType !== this.getExtensionForType(type);
@@ -409,7 +451,25 @@ export class ExtensionController {
       this.currentExtensionType = this.getExtensionForType(type);
     } else {
       console.log('♻️  复用已打开的插件页');
-      await this.extensionPage.bringToFront();
+
+      // 健康检查：尝试与页面交互
+      try {
+        await Promise.race([
+          this.extensionPage.bringToFront(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+
+        // 验证页面可以正常evaluate
+        await Promise.race([
+          this.extensionPage.evaluate(() => document.body !== null),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+        ]);
+      } catch (error) {
+        console.warn(`⚠️  插件页健康检查失败，重新打开...`);
+        await this.resetExtensionPage();
+        await this.openExtension(type);
+        this.currentExtensionType = this.getExtensionForType(type);
+      }
     }
 
     // 2. 填入用户名（如果提供）
@@ -540,8 +600,10 @@ export class ExtensionController {
     let lastCount = 0;
     let noProgressCount = 0;
     let stableCount = 0;
+    let evaluateTimeoutCount = 0; // 追踪连续超时次数
     const maxNoProgress = 20; // 20秒无进展就停止
     const maxStableCount = 15; // 15秒稳定就停止
+    const maxEvaluateTimeout = 5; // 连续5次evaluate超时就放弃
 
     while (true) {
       try {
@@ -553,15 +615,32 @@ export class ExtensionController {
           break;
         }
 
-        if (!dashboardPage || dashboardPage.isClosed()) break;
+        // 检查页面是否异常（连续超时）
+        if (evaluateTimeoutCount >= maxEvaluateTimeout) {
+          console.warn(`⚠️  Dashboard 页面响应异常 (连续${evaluateTimeoutCount}次超时)`);
+          console.log(`   当前采集到 ${lastCount} 条数据，强制尝试导出...`);
+          break;
+        }
+
+        if (!dashboardPage || dashboardPage.isClosed()) {
+          console.warn('⚠️  Dashboard 页面已关闭');
+          break;
+        }
 
         // bringToFront 加超时保护
-        await Promise.race([
-          dashboardPage.bringToFront(),
+        const bringSuccess = await Promise.race([
+          dashboardPage.bringToFront().then(() => true),
           new Promise((_, reject) => setTimeout(() => reject(new Error('bringToFront timeout')), 3000))
-        ]).catch(() => {});
+        ]).catch(() => false);
+
+        if (!bringSuccess) {
+          evaluateTimeoutCount++;
+          await this.sleep(1000);
+          continue;
+        }
 
         // 读取当前采集的数据量（加超时保护）
+        let evaluateTimedOut = false;
         const progress = await Promise.race([
           dashboardPage.evaluate(() => {
             const text = document.body.textContent;
@@ -597,14 +676,30 @@ export class ExtensionController {
               has300Limit,
               isExtracting
             };
-          }).catch(() => ({ count: 0, hasExportButton: false, has300Limit: false, isExtracting: false })),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('evaluate timeout')), 5000))
-        ]).catch(() => ({
-          count: lastCount, // 超时时使用上次的值
-          hasExportButton: false,
-          has300Limit: false,
-          isExtracting: false
-        }));
+          }).catch(() => {
+            evaluateTimedOut = true;
+            return { count: 0, hasExportButton: false, has300Limit: false, isExtracting: false };
+          }),
+          new Promise((_, reject) => setTimeout(() => {
+            evaluateTimedOut = true;
+            reject(new Error('evaluate timeout'));
+          }, 5000))
+        ]).catch(() => {
+          evaluateTimedOut = true;
+          return {
+            count: lastCount, // 超时时使用上次的值
+            hasExportButton: false,
+            has300Limit: false,
+            isExtracting: false
+          };
+        });
+
+        // 追踪超时
+        if (evaluateTimedOut) {
+          evaluateTimeoutCount++;
+        } else {
+          evaluateTimeoutCount = 0; // 成功后重置
+        }
 
         const currentCount = progress.count;
 

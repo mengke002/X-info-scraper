@@ -183,6 +183,9 @@ class BatchTwitterScraper {
           // 6. 增量处理 - 合并新旧数据（数据已入库）
           const processResult = await this.incrementalCollector.processCollectedData(username, type, rawData);
 
+          // 任务成功，重置失败计数
+          this.extensionCtrl.consecutiveFailures = 0;
+
           return processResult;
         })(),
         new Promise((_, reject) =>
@@ -194,6 +197,11 @@ class BatchTwitterScraper {
 
     } catch (error) {
       console.error(`❌ 采集失败: ${error.message}`);
+
+      // 追踪失败
+      this.extensionCtrl.consecutiveFailures++;
+      this.extensionCtrl.lastFailureTime = Date.now();
+
       // 任务失败但不阻断整体流程，返回空结果
       return { total: 0, new: 0, updated: 0 };
     } finally {
