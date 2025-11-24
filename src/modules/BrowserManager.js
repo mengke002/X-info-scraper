@@ -17,6 +17,77 @@ export class BrowserManager {
     this.browser = null;
     this.page = null;
     this.extensionMap = {}; // 存储扩展路径到ID的映射
+    
+    // 确保日志目录存在
+    const fs = require('fs');
+    const logDir = path.resolve(process.cwd(), this.config.logging.directory || './logs');
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+    }
+  }
+
+  /**
+   * 保存页面 HTML 内容用于调试
+   */
+  async dumpPageContent(filename) {
+    if (!this.page) return;
+    try {
+        const content = await this.page.content();
+        const fs = require('fs');
+        const filePath = path.join(process.cwd(), this.config.logging.directory || './logs', filename);
+        fs.writeFileSync(filePath, content);
+        console.log(`📄 页面 HTML 已保存: ${filePath}`);
+    } catch (e) {
+        console.error('❌ 保存页面 HTML 失败:', e.message);
+    }
+  }
+
+  /**
+   * 打印页面关键信息（调试用）
+   */
+  async logPageInfo() {
+    if (!this.page) return;
+    try {
+        const info = await this.page.evaluate(() => {
+            // 获取所有输入框
+            const inputs = Array.from(document.querySelectorAll('input')).map(el => ({
+                type: el.type,
+                name: el.name,
+                placeholder: el.placeholder,
+                value: el.value,
+                isVisible: el.offsetParent !== null
+            }));
+            
+            // 获取可见的按钮
+            const buttons = Array.from(document.querySelectorAll('button, [role="button"]'))
+                .filter(el => el.offsetParent !== null)
+                .map(el => el.textContent.trim().substring(0, 20));
+                
+            // 获取可能的错误提示
+            const alerts = Array.from(document.querySelectorAll('[role="alert"], .error, [data-testid="toast"]'))
+                .map(el => el.textContent.trim());
+                
+            // 获取页面标题和URL
+            return {
+                title: document.title,
+                url: window.location.href,
+                inputs,
+                buttons: buttons.slice(0, 10), // 只取前10个按钮
+                alerts
+            };
+        });
+        
+        console.log('🔍 页面当前状态快照:');
+        console.log(`   URL: ${info.url}`);
+        console.log(`   Title: ${info.title}`);
+        console.log(`   Inputs: ${JSON.stringify(info.inputs)}`);
+        console.log(`   Buttons (Top 10): ${JSON.stringify(info.buttons)}`);
+        if (info.alerts.length > 0) {
+            console.log(`   ⚠️ Alerts/Errors: ${JSON.stringify(info.alerts)}`);
+        }
+    } catch (e) {
+        console.error('❌ 获取页面信息失败:', e.message);
+    }
   }
 
   /**
