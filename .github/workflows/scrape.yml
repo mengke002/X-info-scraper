@@ -51,6 +51,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       # 无头模式（GitHub Actions 必须启用）
       HEADLESS: true
+      # Webhook URL (用于失败通知)
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
 
     steps:
       - name: Checkout code
@@ -186,8 +188,8 @@ jobs:
 
       # 失败通知（可选，需要配置 WEBHOOK_URL）
       - name: Notify on failure
-        if: failure() && secrets.WEBHOOK_URL != ''
+        if: failure() && env.WEBHOOK_URL != ''
         run: |
-          curl -X POST ${{ secrets.WEBHOOK_URL }} \
+          curl -X POST ${{ env.WEBHOOK_URL }} \
             -H 'Content-Type: application/json' \
             -d "{\"text\":\"❌ Twitter scraper failed! Run #${{ github.run_number }}\"}" || true
