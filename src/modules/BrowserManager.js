@@ -124,8 +124,12 @@ export class BrowserManager {
         '--disable-gpu', // Headless 模式通常不需要 GPU
         '--disable-software-rasterizer', // 禁用软件光栅化器
         '--mute-audio', // 静音
+        '--autoplay-policy=no-user-gesture-required', // 自动播放策略
+        '--disable-audio-output', // 🔇 禁用音频输出 (彻底屏蔽 ALSA 错误)
         '--no-first-run', // 跳过首次运行检查
         '--no-default-browser-check', // 跳过默认浏览器检查
+        '--disable-infobars', // 禁用信息栏
+        '--disable-notifications', // 禁用通知
         '--log-level=3', // 关键：只显示 FATAL 级别的日志，屏蔽 D-Bus, UPower, ALSA 错误
         `--user-data-dir=${userDataDir}` // 显式在 args 中也指定一次，双重保险
       ],
@@ -133,7 +137,7 @@ export class BrowserManager {
       slowMo: this.config.browser.slowMo,
       userDataDir: userDataDir, // Puppeteer 选项
       ignoreDefaultArgs: ['--enable-automation', '--enable-blink-features=AutomationControlled'],
-      dumpio: true, // 关键：打印 Chrome 的标准输出/错误，用于调试启动失败
+      dumpio: false, // 🔇 关闭 dumpio，避免 ALSA 错误输出到日志
     });
 
     console.log('✅ 浏览器启动成功');
@@ -157,67 +161,123 @@ export class BrowserManager {
    */
   async mapExtensionsReliably(absoluteExtensionPaths) {
     console.log('🔍 尝试识别已加载的扩展...');
-    const extensionsPage = await this.browser.newPage();
+
+    // 方法1: 通过 chrome://extensions 页面识别（仅在非 headless 模式或能正确渲染的环境下有效）
     try {
-      await extensionsPage.goto('chrome://extensions', { waitUntil: 'load', timeout: 10000 });
-      await BrowserManager.sleep(2000); // 等待页面内容加载
+      const extensionsPage = await this.browser.newPage();
+      try {
+        await extensionsPage.goto('chrome://extensions', { waitUntil: 'load', timeout: 10000 });
+        await BrowserManager.sleep(2000); // 等待页面内容加载
 
-      this.extensionMap = await extensionsPage.evaluate((paths) => {
-        const map = {};
-        const debugInfo = []; // 用于调试
+        const result = await extensionsPage.evaluate((paths) => {
+          const map = {};
+          const debugInfo = []; // 用于调试
 
-        // 获取扩展管理器中的所有项目
-        // 注意：chrome://extensions 页面是一个 Shadow DOM 结构，需要穿透 Shadow Root
-        const manager = document.querySelector('extensions-manager');
-        if (!manager) return { map, debugInfo };
+          try {
+            // 获取扩展管理器中的所有项目
+            // 注意：chrome://extensions 页面是一个 Shadow DOM 结构，需要穿透 Shadow Root
+            const manager = document.querySelector('extensions-manager');
+            if (!manager || !manager.shadowRoot) {
+              return { map, debugInfo, error: 'extensions-manager not found or no shadowRoot' };
+            }
 
-        const itemList = manager.shadowRoot.querySelector('#items-list');
-        if (!itemList) return { map, debugInfo };
+            const itemList = manager.shadowRoot.querySelector('#items-list');
+            if (!itemList || !itemList.shadowRoot) {
+              return { map, debugInfo, error: 'items-list not found or no shadowRoot' };
+            }
 
-        const extensionItems = itemList.shadowRoot.querySelectorAll('extensions-item');
+            const extensionItems = itemList.shadowRoot.querySelectorAll('extensions-item');
+            if (extensionItems.length === 0) {
+              return { map, debugInfo, error: 'no extension items found' };
+            }
 
-        extensionItems.forEach(item => {
-          const nameElement = item.shadowRoot.querySelector('#name');
-          const name = nameElement ? nameElement.textContent.trim() : '';
-          const id = item.getAttribute('id'); // 扩展ID
+            extensionItems.forEach(item => {
+              const nameElement = item.shadowRoot.querySelector('#name');
+              const name = nameElement ? nameElement.textContent.trim() : '';
+              const id = item.getAttribute('id'); // 扩展ID
 
-          debugInfo.push({ name, id }); // 记录所有扩展信息
+              debugInfo.push({ name, id }); // 记录所有扩展信息
 
-          // 尝试通过名称或路径匹配
-          // 优先匹配名称，名称匹配更精确
-          // TwExport 扩展名称: "TwExport - Export Tweets From Any Account"
-          if (name.includes('TwExport')) {
-            map['TwExport'] = id;
+              // 尝试通过名称或路径匹配
+              // 优先匹配名称，名称匹配更精确
+              // TwExport 扩展名称: "TwExport - Export Tweets From Any Account"
+              if (name.includes('TwExport')) {
+                map['TwExport'] = id;
+              }
+              // Twitter Export Follower 扩展名称: "Twitter Export Follower" 或 "Export Twitter Follower"
+              else if (name.includes('Twitter') && name.includes('Follower')) {
+                map['Twitter Export Follower'] = id;
+              }
+            });
+          } catch (e) {
+            return { map, debugInfo, error: e.message };
           }
-          // Twitter Export Follower 扩展名称: "Twitter Export Follower" 或 "Export Twitter Follower"
-          else if (name.includes('Twitter') && name.includes('Follower')) {
-            map['Twitter Export Follower'] = id;
-          }
-        });
-        return { map, debugInfo };
-      }, absoluteExtensionPaths);
+          return { map, debugInfo };
+        }, absoluteExtensionPaths);
 
-      // 打印调试信息
-      if (this.extensionMap.debugInfo) {
-        console.log('🔍 检测到的所有扩展:', JSON.stringify(this.extensionMap.debugInfo, null, 2));
-        this.extensionMap = this.extensionMap.map; // 提取实际的 map
-      }
+        // 打印调试信息
+        if (result.error) {
+          console.warn(`⚠️  通过 chrome://extensions 识别失败: ${result.error}`);
+        } else if (result.debugInfo && result.debugInfo.length > 0) {
+          console.log('🔍 检测到的所有扩展:', JSON.stringify(result.debugInfo, null, 2));
+        }
 
-      if (this.extensionMap['TwExport']) {
-        console.log(`🔗 识别 TwExport 扩展成功 (ID: ${this.extensionMap['TwExport']})`);
-      } else {
-        console.warn('⚠️  未能自动识别 TwExport 扩展。请确保其已加载并名称包含 "TwExport"');
-      }
-      if (this.extensionMap['Twitter Export Follower']) {
-        console.log(`🔗 识别 Twitter Export Follower 扩展成功 (ID: ${this.extensionMap['Twitter Export Follower']})`);
-      } else {
-        console.warn('⚠️  未能自动识别 Twitter Export Follower 扩展。请确保其已加载并名称包含 "Twitter Export Follower"');
-      }
+        if (result.map && Object.keys(result.map).length > 0) {
+          this.extensionMap = result.map;
+        }
 
+        await extensionsPage.close();
+      } catch (error) {
+        console.warn('⚠️  通过 chrome://extensions 识别失败:', error.message);
+        await extensionsPage.close();
+      }
     } catch (error) {
-      console.error('❌ 识别扩展时出错:', error.message);
-    } finally {
-      await extensionsPage.close();
+      console.warn('⚠️  无法打开 chrome://extensions 页面:', error.message);
+    }
+
+    // 方法2: 通过 browser.targets() 获取扩展 ID（更可靠的降级方案）
+    if (Object.keys(this.extensionMap).length === 0) {
+      console.log('🔄 降级方案: 通过 targets 识别扩展...');
+      try {
+        const targets = await this.browser.targets();
+
+        for (const target of targets) {
+          const url = target.url();
+          if (url.includes('chrome-extension://')) {
+            const match = url.match(/chrome-extension:\/\/([a-z]{32})/);
+            if (match) {
+              const extensionId = match[1];
+
+              // 根据文件夹路径推断扩展类型
+              for (const extPath of absoluteExtensionPaths) {
+                if (extPath.includes('TwExport')) {
+                  this.extensionMap['TwExport'] = extensionId;
+                  console.log(`🔗 通过路径识别 TwExport (ID: ${extensionId})`);
+                  break;
+                } else if (extPath.includes('Twitter Export Follower')) {
+                  this.extensionMap['Twitter Export Follower'] = extensionId;
+                  console.log(`🔗 通过路径识别 Twitter Export Follower (ID: ${extensionId})`);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ 通过 targets 识别扩展时出错:', error.message);
+      }
+    }
+
+    // 最终验证
+    if (this.extensionMap['TwExport']) {
+      console.log(`✅ TwExport 扩展已识别 (ID: ${this.extensionMap['TwExport']})`);
+    } else {
+      console.warn('⚠️  未能识别 TwExport 扩展');
+    }
+    if (this.extensionMap['Twitter Export Follower']) {
+      console.log(`✅ Twitter Export Follower 扩展已识别 (ID: ${this.extensionMap['Twitter Export Follower']})`);
+    } else {
+      console.warn('⚠️  未能识别 Twitter Export Follower 扩展');
     }
   }
 

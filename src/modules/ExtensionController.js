@@ -190,10 +190,12 @@ export class ExtensionController {
           return extId;
         } else {
           console.warn(`⚠️  未找到扩展映射: extensionType=${extensionType}, folderName=${folderName}`);
+          console.log(`🔍 当前映射表:`, this.browser.extensionMap);
         }
       }
 
-      // 如果映射查找失败，使用原有逻辑
+      // 降级方案1: 尝试从当前 targets 中查找扩展 ID
+      console.log('🔄 降级方案: 从 browser targets 查找扩展...');
       const targets = await this.browser.browser.targets();
       const extensionIds = [];
 
@@ -210,12 +212,24 @@ export class ExtensionController {
         }
       }
 
+      // 如果找到多个扩展，尝试根据 URL 中的关键词匹配
+      if (extensionIds.length > 1 && preferredType) {
+        for (const ext of extensionIds) {
+          // 尝试通过 URL 判断是哪个扩展
+          if (ext.url.toLowerCase().includes('popup') || ext.url.toLowerCase().includes('dashboard')) {
+            console.log(`🎯 根据 URL 推测扩展ID: ${ext.id}`);
+            return ext.id;
+          }
+        }
+      }
+
       // 返回第一个找到的
       if (extensionIds.length > 0) {
-        console.warn(`⚠️  使用默认扩展ID: ${extensionIds[0].id}`);
+        console.log(`📌 使用第一个扩展ID: ${extensionIds[0].id}`);
         return extensionIds[0].id;
       }
 
+      console.error('❌ 未找到任何扩展ID');
       return null;
     } catch (error) {
       console.error('获取扩展ID失败:', error.message);
