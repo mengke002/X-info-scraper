@@ -90,6 +90,19 @@ export class BrowserManager {
   }
 
   /**
+   * 打印页面文本内容（调试用）
+   */
+  async logPageText() {
+    if (!this.page) return;
+    try {
+        const text = await this.page.evaluate(() => document.body.innerText.substring(0, 500).replace(/\n/g, ' '));
+        console.log(`📄 页面文本内容 (前500字): ${text}`);
+    } catch (e) {
+        console.error('❌ 获取页面文本失败:', e.message);
+    }
+  }
+
+  /**
    * 通用延迟方法（替代已弃用的 waitForTimeout）
    */
   static sleep(ms) {

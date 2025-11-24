@@ -90,9 +90,14 @@ export class TwitterAuth {
             console.log(`📝 正在中间验证框中输入: ${valueToType.substring(0, 3)}***`);
             await this.browser.type(actualInputSelector, valueToType); // 使用实际匹配到的选择器
             await this.browser.page.keyboard.press('Enter');
-            await this.sleep(3000); // 等待验证通过
+            
+            console.log('⏳ 等待验证响应...');
+            await this.sleep(8000); // 增加等待时间到 8秒
+            await this.browser.logPageText(); // 打印当前页面文本，查看是否有错误提示
+            
         } else {
              console.log('⚠️ 未找到密码框，也未找到验证输入框，页面可能未正确加载');
+             await this.browser.logPageText();
         }
       }
 
@@ -122,6 +127,7 @@ export class TwitterAuth {
       await this.browser.screenshot(`login-error-${timestamp}.png`);
       await this.browser.dumpPageContent(`login-error-${timestamp}.html`);
       await this.browser.logPageInfo();
+      await this.browser.logPageText(); // 打印页面文本
       throw error;
     }
   }
