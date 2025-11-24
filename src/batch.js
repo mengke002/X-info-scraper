@@ -145,40 +145,57 @@ class BatchTwitterScraper {
     const { username, type, maxCount } = user;
     let dashboardPage = null;
 
+    // 整个任务的超时限制：60秒
+    const taskTimeout = 60000;
+
     try {
-      // 1. 自动配置插件
-      await this.extensionCtrl.autoConfigureExtension(type, maxCount, username);
+      // 使用 Promise.race 为整个任务添加超时保护
+      const result = await Promise.race([
+        (async () => {
+          // 1. 自动配置插件
+          await this.extensionCtrl.autoConfigureExtension(type, maxCount, username);
 
-      // 2. 开始导出并监控进度
-      dashboardPage = await this.extensionCtrl.startExport();
-      if (!dashboardPage) {
-        throw new Error('无法启动导出');
-      }
+          // 2. 开始导出并监控进度
+          dashboardPage = await this.extensionCtrl.startExport();
+          if (!dashboardPage) {
+            throw new Error('无法启动导出');
+          }
 
-      // 3. 监控进度（最多等待60秒）
-      await this.extensionCtrl.monitorProgress(dashboardPage, maxCount);
+          // 3. 监控进度（最多等待40秒）
+          await this.extensionCtrl.monitorProgress(dashboardPage, maxCount);
 
-      // 4. 点击导出按钮下载数据（即使失败也继续）
-      await this.extensionCtrl.clickExportButton(dashboardPage);
+          // 4. 点击导出按钮下载数据（即使失败也继续）
+          await this.extensionCtrl.clickExportButton(dashboardPage);
 
-      // 等待下载开始
-      await this.sleep(1000);
+          // 等待下载开始
+          await this.sleep(1000);
 
-      // 5. 读取下载的文件
-      let rawData = await this.readDownloadedFile(username, type);
+          // 5. 读取下载的文件
+          let rawData = await this.readDownloadedFile(username, type);
 
-      if (rawData.length === 0) {
-        console.log(`⚠️  未采集到数据，跳过`);
-        return { total: 0, new: 0, updated: 0 };
-      }
+          if (rawData.length === 0) {
+            console.log(`⚠️  未采集到数据，跳过`);
+            return { total: 0, new: 0, updated: 0 };
+          }
 
-      console.log(`📊 读取到 ${rawData.length} 条原始数据`);
+          console.log(`📊 读取到 ${rawData.length} 条原始数据`);
 
-      // 6. 增量处理 - 合并新旧数据（数据已入库）
-      const result = await this.incrementalCollector.processCollectedData(username, type, rawData);
+          // 6. 增量处理 - 合并新旧数据（数据已入库）
+          const processResult = await this.incrementalCollector.processCollectedData(username, type, rawData);
+
+          return processResult;
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`任务超时 (${taskTimeout/1000}秒)`)), taskTimeout)
+        )
+      ]);
 
       return result;
 
+    } catch (error) {
+      console.error(`❌ 采集失败: ${error.message}`);
+      // 任务失败但不阻断整体流程，返回空结果
+      return { total: 0, new: 0, updated: 0 };
     } finally {
       // 7. 无论成功失败，都要关闭dashboard页面
       if (dashboardPage) {

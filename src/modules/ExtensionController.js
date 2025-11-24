@@ -467,20 +467,27 @@ export class ExtensionController {
       await this.openExtension();
     }
 
-    await this.extensionPage.bringToFront();
+    // bringToFront 加超时保护
+    await Promise.race([
+      this.extensionPage.bringToFront(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('bringToFront timeout')), 3000))
+    ]).catch(() => {});
 
-    // 查找并点击"Start Exporting"按钮
-    const clicked = await this.extensionPage.evaluate(() => {
-      const buttons = document.querySelectorAll('button');
-      for (const button of buttons) {
-        const text = button.textContent.trim();
-        if (text.includes('Start') || text.includes('Export') || text.includes('开始')) {
-          button.click();
-          return true;
+    // 查找并点击"Start Exporting"按钮（加超时保护）
+    const clicked = await Promise.race([
+      this.extensionPage.evaluate(() => {
+        const buttons = document.querySelectorAll('button');
+        for (const button of buttons) {
+          const text = button.textContent.trim();
+          if (text.includes('Start') || text.includes('Export') || text.includes('开始')) {
+            button.click();
+            return true;
+          }
         }
-      }
-      return false;
-    });
+        return false;
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('evaluate timeout')), 5000))
+    ]).catch(() => false);
 
     if (clicked) {
         // 等待 Dashboard 页面打开
@@ -548,7 +555,11 @@ export class ExtensionController {
 
         if (!dashboardPage || dashboardPage.isClosed()) break;
 
-        await dashboardPage.bringToFront().catch(() => {});
+        // bringToFront 加超时保护
+        await Promise.race([
+          dashboardPage.bringToFront(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('bringToFront timeout')), 3000))
+        ]).catch(() => {});
 
         // 读取当前采集的数据量（加超时保护）
         const progress = await Promise.race([
