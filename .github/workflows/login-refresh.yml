@@ -14,6 +14,7 @@ jobs:
       HEADLESS: true # 登录时必须使用无头模式 (配合 puppeteer-extra-plugin-stealth)
       TWITTER_USERNAME: ${{ secrets.TWITTER_USERNAME }}
       TWITTER_PASSWORD: ${{ secrets.TWITTER_PASSWORD }}
+      DB_ENABLED: 'false' # 此工作流不需要数据库
       # 如果有手机号验证需求，也可以配置 TWITTER_PHONE
       # TWITTER_PHONE: ${{ secrets.TWITTER_PHONE }}
 

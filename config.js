@@ -2,7 +2,7 @@
 export default {
   // 数据库配置 (v3.0新增)
   database: {
-    enabled: true,  // 默认启用数据库集成
+    enabled: process.env.DB_ENABLED !== 'false',  // 默认启用，除非显式设置为 'false'
     host: process.env.DB_HOST,
     port: parseInt(process.env.DB_PORT || '3306'),
     user: process.env.DB_USER,
