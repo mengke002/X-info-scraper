@@ -62,7 +62,7 @@ jobs:
       - name: Checkout profile repo
         uses: actions/checkout@v4
         with:
-          repository: YOUR_USERNAME/twitter-scraper-profile
+          repository: mengke002/X-info-scraper-profile
           ssh-key: ${{ secrets.PROFILE_REPO_SSH_KEY }}
           path: data/chrome-profile-repo
 
