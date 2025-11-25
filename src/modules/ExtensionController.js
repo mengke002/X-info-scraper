@@ -705,6 +705,32 @@ export class ExtensionController {
             const dashboardPage = await dashboardTarget.page();
             if (dashboardPage) {
                 await this.sleep(2000); // 等待 Dashboard 页面加载
+
+                // 🔥 关键修复：检查插件是否真的在采集，如果没有，可能需要先访问 Twitter 页面
+                const needsTwitterPage = await dashboardPage.evaluate(() => {
+                  const text = document.body.textContent;
+                  // 如果显示 "Extracting" 但表格只有2行（表头），说明插件可能卡住了
+                  const isExtracting = text.includes('Extracting');
+                  const table = document.querySelector('table');
+                  const rowCount = table ? table.querySelectorAll('tbody tr, tr[role="row"]').length : 0;
+
+                  return isExtracting && rowCount <= 2;
+                }).catch(() => false);
+
+                if (needsTwitterPage) {
+                  console.log('⚠️  插件可能未初始化，尝试访问 Twitter 主页面激活插件...');
+                  // 切换到主浏览器页面，访问 Twitter 首页
+                  try {
+                    await this.browser.page.bringToFront();
+                    await this.browser.page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
+                    await this.sleep(2000);
+                    console.log('✅ 已访问 Twitter 首页，等待插件激活...');
+                    await this.sleep(3000); // 给插件时间启动
+                  } catch (e) {
+                    console.warn(`   访问 Twitter 页面失败: ${e.message}`);
+                  }
+                }
+
                 // 尝试关闭升级弹窗
                 await this.closeUpgradeDialog(dashboardPage);
 
