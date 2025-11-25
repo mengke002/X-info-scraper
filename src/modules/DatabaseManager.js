@@ -739,18 +739,51 @@ export class DatabaseManager {
       }
 
       // 4. 根据发帖速率确定频率分组和下次运行时间
+      // 核心策略：高频覆盖优先，及时更新互动数据
+      // - 单个用户目标：每次爬取约 20 条（插件配置）
+      // - 实际新数据：可能只有 1-5 条，但能及时更新点赞/转发等互动数据
+      // - 批次大小：每次 GitHub Actions 处理 80 个用户
       let frequencyGroup = 'medium';
-      let nextRunHours = 4.5; // 默认4.5小时（留出缓冲时间）
+      let nextRunHours = 12; // 默认 12 小时
 
-      if (avgPostsPerDay > 5) {
-        // 高频用户：平均每天 >5 条
+      if (avgPostsPerDay >= 10) {
+        // 高频用户：平均每天 ≥10 条
+        // 间隔：6-8 小时，每次约 2.5-6 条新数据
+        frequencyGroup = 'very_high';
+        nextRunHours = 7; // 7 小时（折中值）
+      } else if (avgPostsPerDay >= 5) {
+        // 中高频用户：平均每天 5-10 条
+        // 间隔：8 小时，每次约 1.7-3.3 条新数据
         frequencyGroup = 'high';
-        nextRunHours = 2.5;  // 2.5小时（避免与 GitHub Actions 2小时触发冲突）
-      } else if (avgPostsPerDay < 1) {
-        // 低频用户：平均每天 <1 条
+        nextRunHours = 8;
+      } else if (avgPostsPerDay >= 2) {
+        // 中频用户：平均每天 2-5 条
+        // 间隔：10 小时，每次约 0.8-2 条新数据
+        frequencyGroup = 'medium_high';
+        nextRunHours = 10;
+      } else if (avgPostsPerDay >= 1) {
+        // 中低频用户：平均每天 1-2 条
+        // 间隔：12 小时，每次约 0.5-1 条新数据
+        frequencyGroup = 'medium';
+        nextRunHours = 12;
+      } else if (avgPostsPerDay >= 0.5) {
+        // 低频用户：平均每天 0.5-1 条
+        // 间隔：18 小时，每次约 0.4-0.75 条新数据
         frequencyGroup = 'low';
-        nextRunHours = 6.5;  // 6.5小时（避免与 GitHub Actions 6小时触发冲突）
+        nextRunHours = 18;
+      } else {
+        // 极低频用户：平均每天 <0.5 条
+        // 间隔：24 小时，每次约 0-0.5 条新数据
+        frequencyGroup = 'very_low';
+        nextRunHours = 24;
       }
+
+      // 添加一些随机性（±10%），避免所有用户同时到期
+      const randomFactor = 0.9 + Math.random() * 0.2; // 0.9 - 1.1
+      nextRunHours = nextRunHours * randomFactor;
+
+      // 限制间隔范围：6-24 小时
+      nextRunHours = Math.max(6, Math.min(24, nextRunHours));
 
       // 5. 计算下次运行时间（北京时间 8-24点）
       const nextRunTime = this.calculateNextRunTime(nextRunHours);
@@ -768,7 +801,7 @@ export class DatabaseManager {
 
       console.log(
         `📊 频率更新: ${frequencyGroup} ` +
-        `(${avgPostsPerDay.toFixed(2)} posts/天, 下次: ${nextRunTime})`
+        `(${avgPostsPerDay.toFixed(2)} posts/天, 间隔 ${nextRunHours.toFixed(1)}h, 下次: ${nextRunTime})`
       );
 
     } finally {

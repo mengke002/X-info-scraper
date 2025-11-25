@@ -472,17 +472,20 @@ Twitter批量采集器 - 使用说明
   --only=<user1,user2>             # 只处理指定的用户
   --skip-completed                 # 跳过已完成的用户
   --batch-size=<number>            # 批次大小，随机抽取N个用户 (默认: 50)
-  --frequency=<group>              # 频率分组: all/high/medium/low (默认: all)
+  --frequency=<group>              # 频率分组: all/very_high/high/medium_high/medium/low/very_low (默认: all)
   --single=<username>              # 单用户模式
   --type=<posts|replies>           # 单用户模式的数据类型
   --count=<number>                 # 采集数量限制
   --login-only                     # 仅执行登录操作并退出（用于 CI 环境刷新 Profile）
 
-频率分组说明:
-  high   - 高频用户 (每2小时, 北京时间8-24点)
-  medium - 中频用户 (每4小时, 北京时间8-24点)
-  low    - 低频用户 (每6小时, 北京时间8-24点)
-  all    - 所有分组
+频率分组说明 (高频覆盖策略，及时更新互动数据):
+  very_high   - 超高频用户 (≥10 posts/天, 间隔 7h)
+  high        - 中高频用户 (5-10 posts/天, 间隔 8h)
+  medium_high - 中频用户 (2-5 posts/天, 间隔 10h)
+  medium      - 中低频用户 (1-2 posts/天, 间隔 12h)
+  low         - 低频用户 (0.5-1 posts/天, 间隔 18h)
+  very_low    - 极低频用户 (<0.5 posts/天, 间隔 24h)
+  all         - 所有分组
 
 示例:
   npm run batch -- --batch-size=20 --frequency=high

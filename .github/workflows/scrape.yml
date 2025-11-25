@@ -7,7 +7,7 @@ on:
       batch_size:
         description: 'Batch size (random N users from database)'
         required: false
-        default: '20'
+        default: '80'
       frequency_group:
         description: 'User frequency group to scrape'
         required: false
@@ -15,9 +15,12 @@ on:
         type: choice
         options:
           - all
-          - high     # 高频用户 (每2小时)
-          - medium   # 中频用户 (每4小时)
-          - low      # 低频用户 (每6小时)
+          - very_high   # 超高频 (≥10 posts/天, 间隔 7h)
+          - high        # 中高频 (5-10 posts/天, 间隔 8h)
+          - medium_high # 中频 (2-5 posts/天, 间隔 10h)
+          - medium      # 中低频 (1-2 posts/天, 间隔 12h)
+          - low         # 低频 (0.5-1 posts/天, 间隔 18h)
+          - very_low    # 极低频 (<0.5 posts/天, 间隔 24h)
 
   # 自动定时任务（北京时间 8-24点）- 已暂时停用
   # schedule:
