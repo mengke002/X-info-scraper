@@ -539,6 +539,57 @@ export class ExtensionController {
   }
 
   /**
+   * 主动触发插件开始采集（模拟用户交互以确保插件真正启动）
+   */
+  async triggerExtensionStart(dashboardPage) {
+    try {
+      console.log('🚀 主动触发插件采集流程...');
+
+      // 方法1: 模拟页面滚动（有些插件需要滚动才开始采集）
+      await dashboardPage.evaluate(() => {
+        window.scrollBy(0, 100);
+        window.scrollBy(0, -100);
+      }).catch(() => {});
+
+      // 方法2: 模拟鼠标移动（激活页面）
+      await dashboardPage.mouse.move(100, 100).catch(() => {});
+      await dashboardPage.mouse.move(200, 200).catch(() => {});
+
+      // 方法3: 尝试点击页面上的任何可交互元素（触发事件循环）
+      await dashboardPage.evaluate(() => {
+        // 触发 focus 事件
+        window.focus();
+        document.body.click();
+      }).catch(() => {});
+
+      // 方法4: 等待一小段时间，让插件的事件监听器生效
+      await this.sleep(1500);
+
+      // 方法5: 检查是否有 "Start" 或 "Resume" 按钮需要点击
+      const needsClick = await dashboardPage.evaluate(() => {
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          const text = btn.textContent.trim().toLowerCase();
+          if (text.includes('start') || text.includes('resume') || text.includes('continue')) {
+            btn.click();
+            return true;
+          }
+        }
+        return false;
+      }).catch(() => false);
+
+      if (needsClick) {
+        console.log('✅ 点击了插件的启动按钮');
+        await this.sleep(500);
+      }
+
+      console.log('✅ 插件触发完成，等待采集开始...');
+    } catch (error) {
+      console.warn(`⚠️  触发插件采集失败: ${error.message}`);
+    }
+  }
+
+  /**
    * 开始导出
    */
   async startExport() {
@@ -578,9 +629,13 @@ export class ExtensionController {
 
             const dashboardPage = await dashboardTarget.page();
             if (dashboardPage) {
-                await this.sleep(3000); // 增加等待时间,让插件有足够时间初始化（CI环境需要更长时间）
+                await this.sleep(2000); // 等待 Dashboard 页面加载
                 // 尝试关闭升级弹窗
                 await this.closeUpgradeDialog(dashboardPage);
+
+                // 🔥 主动触发插件开始采集（模拟用户交互）
+                await this.triggerExtensionStart(dashboardPage);
+
                 return dashboardPage;
             }
         } catch (e) {
@@ -589,9 +644,13 @@ export class ExtensionController {
             for (const page of pages) {
                 const url = page.url();
                 if (url.includes('chrome-extension://') && url.includes('exportDashboard')) {
-                    await this.sleep(3000); // 增加等待时间
+                    await this.sleep(2000); // 等待 Dashboard 页面加载
                     // 尝试关闭升级弹窗
                     await this.closeUpgradeDialog(page);
+
+                    // 🔥 主动触发插件开始采集
+                    await this.triggerExtensionStart(page);
+
                     return page;
                 }
             }
@@ -620,9 +679,10 @@ export class ExtensionController {
     let noProgressCount = 0;
     let stableCount = 0;
     let evaluateTimeoutCount = 0; // 追踪连续超时次数
-    const maxNoProgress = 45; // 45秒无进展就停止（CI环境插件启动慢）
+    const maxNoProgress = 25; // 25秒无进展就停止（根据你的观察：最长冷却时间不超过25秒）
     const maxStableCount = 20; // 20秒稳定就停止
     const maxEvaluateTimeout = 10; // 连续10次evaluate超时就放弃
+    let hasRetriggered = false; // 是否已经重新触发过插件
 
     while (true) {
       try {
@@ -632,6 +692,14 @@ export class ExtensionController {
           console.log(`⏱️  已等待 ${(elapsed / 1000).toFixed(1)}s，超过最长等待时间`);
           console.log(`   当前采集到 ${lastCount} 条数据，强制尝试导出...`);
           break;
+        }
+
+        // 🔥 早期检测：如果10秒后还是只有2条或更少，说明插件可能没启动，尝试重新触发
+        if (!hasRetriggered && elapsed > 10000 && lastCount <= 2) {
+          console.warn(`⚠️  10秒后仍只有 ${lastCount} 条数据，尝试重新触发插件...`);
+          await this.triggerExtensionStart(dashboardPage);
+          hasRetriggered = true;
+          noProgressCount = 0; // 重置无进展计数
         }
 
         // 检查页面是否异常（连续超时）
