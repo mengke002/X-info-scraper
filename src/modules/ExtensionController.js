@@ -578,7 +578,7 @@ export class ExtensionController {
 
             const dashboardPage = await dashboardTarget.page();
             if (dashboardPage) {
-                await this.sleep(1000);
+                await this.sleep(3000); // 增加等待时间,让插件有足够时间初始化（CI环境需要更长时间）
                 // 尝试关闭升级弹窗
                 await this.closeUpgradeDialog(dashboardPage);
                 return dashboardPage;
@@ -589,7 +589,7 @@ export class ExtensionController {
             for (const page of pages) {
                 const url = page.url();
                 if (url.includes('chrome-extension://') && url.includes('exportDashboard')) {
-                    await this.sleep(1000);
+                    await this.sleep(3000); // 增加等待时间
                     // 尝试关闭升级弹窗
                     await this.closeUpgradeDialog(page);
                     return page;
@@ -615,14 +615,14 @@ export class ExtensionController {
     await this.closeUpgradeDialog(dashboardPage).catch(() => {});
 
     const startTime = Date.now();
-    const maxWaitTime = 40000; // 最长等待40秒，无论如何都要尝试导出
+    const maxWaitTime = 60000; // 最长等待60秒（1分钟），控制单个任务时间
     let lastCount = 0;
     let noProgressCount = 0;
     let stableCount = 0;
     let evaluateTimeoutCount = 0; // 追踪连续超时次数
-    const maxNoProgress = 20; // 20秒无进展就停止
-    const maxStableCount = 15; // 15秒稳定就停止
-    const maxEvaluateTimeout = 5; // 连续5次evaluate超时就放弃
+    const maxNoProgress = 45; // 45秒无进展就停止（CI环境插件启动慢）
+    const maxStableCount = 20; // 20秒稳定就停止
+    const maxEvaluateTimeout = 10; // 连续10次evaluate超时就放弃
 
     while (true) {
       try {

@@ -145,8 +145,8 @@ class BatchTwitterScraper {
     const { username, type, maxCount } = user;
     let dashboardPage = null;
 
-    // 整个任务的超时限制：60秒
-    const taskTimeout = 60000;
+    // 整个任务的超时限制：90秒，确保大于 monitorProgress 的 maxWaitTime (60秒)
+    const taskTimeout = 90000;
 
     try {
       // 使用 Promise.race 为整个任务添加超时保护
