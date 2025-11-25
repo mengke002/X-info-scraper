@@ -516,6 +516,7 @@ async function main() {
       const type = options.type || 'posts';
       const count = options.count ? parseInt(options.count) : null;
       await scraper.runSingle(options.single, type, count);
+      process.exit(0);
     } else {
       // 批量模式
       await scraper.runBatch({
@@ -525,6 +526,7 @@ async function main() {
         limit: options['batch-size'] ? parseInt(options['batch-size']) : 50,
         frequency: options.frequency || 'all'  // 新增：频率分组
       });
+      process.exit(0);
     }
   } catch (error) {
     console.error('程序异常退出:', error.message);
