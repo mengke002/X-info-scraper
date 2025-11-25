@@ -642,9 +642,25 @@ export class ExtensionController {
                   try {
                     await this.browser.page.bringToFront();
                     await this.browser.page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
-                    await this.sleep(2000);
-                    console.log('✅ 已访问 Twitter 首页，等待插件激活...');
-                    await this.sleep(3000); // 给插件时间启动
+                    console.log('✅ 已访问 Twitter 首页，等待插件采集...');
+
+                    // 🔥 关键修复：等待插件真正开始采集数据
+                    // 在主页面停留，让插件后台脚本有时间访问页面并采集数据
+                    await this.sleep(8000); // 增加到 8 秒，给插件充足时间
+
+                    // 切回 Dashboard 检查是否开始采集
+                    await dashboardPage.bringToFront();
+                    const dataStarted = await dashboardPage.evaluate(() => {
+                      const table = document.querySelector('table');
+                      const rowCount = table ? table.querySelectorAll('tbody tr, tr[role="row"]').length : 0;
+                      return rowCount > 2; // 如果有超过2行（不只是表头），说明开始采集了
+                    }).catch(() => false);
+
+                    if (dataStarted) {
+                      console.log('✅ 插件已开始采集数据');
+                    } else {
+                      console.warn('⚠️  插件仍未开始采集，将继续监控');
+                    }
                   } catch (e) {
                     console.warn(`   访问 Twitter 页面失败: ${e.message}`);
                   }
