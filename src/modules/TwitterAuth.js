@@ -18,6 +18,7 @@ export class TwitterAuth {
 
   /**
    * 注入 Cookies (优先级: 环境变量 > 本地文件)
+   * 支持多个 cookie 配置,随机选择一个
    */
   async injectCookies() {
     try {
@@ -26,10 +27,29 @@ export class TwitterAuth {
 
       // 1. 优先从环境变量读取 (GitHub Actions 场景)
       if (process.env.TWITTER_COOKIES_JSON) {
-        console.log('🍪 检测到 TWITTER_COOKIES_JSON 环境变量，正在注入...');
+        console.log('🍪 检测到 TWITTER_COOKIES_JSON 环境变量，正在解析...');
         try {
-            cookies = JSON.parse(process.env.TWITTER_COOKIES_JSON);
-            source = '环境变量';
+            const parsedData = JSON.parse(process.env.TWITTER_COOKIES_JSON);
+
+            // 支持两种格式:
+            // 格式1: 单个 cookie 数组 [{name: "ct0", value: "..."}, ...]
+            // 格式2: 多个 cookie 配置数组 [[{name: "ct0", ...}], [{name: "ct0", ...}]]
+            if (Array.isArray(parsedData) && parsedData.length > 0) {
+                // 检查第一个元素是否是数组
+                if (Array.isArray(parsedData[0])) {
+                    // 格式2: 多个 cookie 配置,随机选择一个
+                    const selectedIndex = Math.floor(Math.random() * parsedData.length);
+                    cookies = parsedData[selectedIndex];
+                    console.log(`🎲 从 ${parsedData.length} 个 cookie 配置中随机选择了第 ${selectedIndex + 1} 个`);
+                    source = `环境变量(多配置:${selectedIndex + 1}/${parsedData.length})`;
+                } else {
+                    // 格式1: 单个 cookie 配置
+                    cookies = parsedData;
+                    source = '环境变量(单配置)';
+                }
+            } else {
+                console.error('❌ TWITTER_COOKIES_JSON 格式错误: 必须是数组');
+            }
         } catch (e) {
             console.error('❌ 解析 TWITTER_COOKIES_JSON 失败:', e.message);
         }
@@ -45,8 +65,20 @@ export class TwitterAuth {
           if (fs.existsSync(cookiesPath)) {
             console.log('🍪 检测到本地 twitter-cookies.json 文件，正在读取...');
             const cookiesContent = fs.readFileSync(cookiesPath, 'utf8');
-            cookies = JSON.parse(cookiesContent);
-            source = '本地文件';
+            const parsedData = JSON.parse(cookiesContent);
+
+            // 支持本地文件也可以是多个配置
+            if (Array.isArray(parsedData) && parsedData.length > 0) {
+                if (Array.isArray(parsedData[0])) {
+                    const selectedIndex = Math.floor(Math.random() * parsedData.length);
+                    cookies = parsedData[selectedIndex];
+                    console.log(`🎲 从 ${parsedData.length} 个本地 cookie 配置中随机选择了第 ${selectedIndex + 1} 个`);
+                    source = `本地文件(多配置:${selectedIndex + 1}/${parsedData.length})`;
+                } else {
+                    cookies = parsedData;
+                    source = '本地文件(单配置)';
+                }
+            }
           }
         } catch (e) {
           console.warn('⚠️  读取本地 cookies 文件失败:', e.message);

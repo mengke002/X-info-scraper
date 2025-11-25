@@ -7,7 +7,7 @@ on:
       batch_size:
         description: 'Batch size (random N users from database)'
         required: false
-        default: '80'
+        default: '50'
       frequency_group:
         description: 'User frequency group to scrape'
         required: false
@@ -22,14 +22,10 @@ on:
           - low         # 低频 (0.5-1 posts/天, 间隔 18h)
           - very_low    # 极低频 (<0.5 posts/天, 间隔 24h)
 
-  # 自动定时任务（北京时间 8-24点）- 已暂时停用
-  # schedule:
-  #   # 高频用户：每2小时 (北京时间 8, 10, 12, 14, 16, 18, 20, 22点)
-  #   - cron: '0 0,2,4,6,8,10,12,14 * * *'
-  #   # 中频用户：每4小时 (北京时间 8, 12, 16, 20点)
-  #   - cron: '30 0,4,8,12 * * *'
-  #   # 低频用户：每6小时 (北京时间 8, 14, 20点)
-  #   - cron: '45 0,6,12 * * *'
+  # 自动定时任务（北京时间 8-24点，每2小时执行一次）
+  schedule:
+    # 北京时间 8, 10, 12, 14, 16, 18, 20, 22 点 = UTC 0, 2, 4, 6, 8, 10, 12, 14 点
+    - cron: '0 0,2,4,6,8,10,12,14 * * *'
 
 jobs:
   scrape:
@@ -72,20 +68,14 @@ jobs:
           INPUT_FREQ: ${{ github.event.inputs.frequency_group || 'all' }}
           INPUT_BATCH: ${{ github.event.inputs.batch_size || '' }}
         run: |
-          # 定时任务根据触发的 cron 表达式确定频率组（避免执行延迟导致的时间漂移）
+          # 定时任务执行所有到期的任务，批次大小为 50
           if [ "$EVENT_NAME" = "schedule" ]; then
-            # 从 cron 表达式中提取分钟数（格式: "M H * * *"）
-            CRON_MINUTE=$(echo "$SCHEDULE_CRON" | awk '{print $1}')
-            case $CRON_MINUTE in
-              0)  FREQ="high";   BATCH_SIZE=25;;  # 高频用户
-              30) FREQ="medium"; BATCH_SIZE=50;;  # 中频用户
-              45) FREQ="low";    BATCH_SIZE=90;;  # 低频用户
-              *)  FREQ="all";    BATCH_SIZE=30;;
-            esac
-            echo "📅 触发的 cron: $SCHEDULE_CRON (分钟=$CRON_MINUTE)"
+            FREQ="all"
+            BATCH_SIZE=50
+            echo "📅 定时任务触发，执行所有到期任务"
           else
             FREQ="$INPUT_FREQ"
-            BATCH_SIZE="${INPUT_BATCH:-20}"  # 手动触发使用输入值或默认20
+            BATCH_SIZE="${INPUT_BATCH:-50}"  # 手动触发使用输入值或默认 50
           fi
           echo "🚀 频率组: $FREQ, 批次大小: $BATCH_SIZE"
           npm run batch -- --batch-size=$BATCH_SIZE --frequency=$FREQ
