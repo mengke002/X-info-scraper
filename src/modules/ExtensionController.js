@@ -441,6 +441,17 @@ export class ExtensionController {
       this.consecutiveFailures = 0;
     }
 
+    // 🔥 关键修复: 在打开插件之前，确保主页面在 Twitter 上，这样插件才能立即开始采集
+    try {
+      const currentUrl = this.browser.page.url();
+      if (!currentUrl.includes('twitter.com') && !currentUrl.includes('x.com')) {
+        await this.browser.page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await this.sleep(2000);
+      }
+    } catch (e) {
+      console.warn(`⚠️  访问 Twitter 首页失败: ${e.message}`);
+    }
+
     // 1. 打开插件（传入类型以选择正确的扩展）
     //    如果插件页已经打开且是同类型，复用它；否则重新打开
     const needReopen = !this.extensionPage || this.extensionPage.isClosed() || this.currentExtensionType !== this.getExtensionForType(type);
@@ -624,45 +635,6 @@ export class ExtensionController {
             const dashboardPage = await dashboardTarget.page();
             if (dashboardPage) {
                 await this.sleep(2000); // 等待 Dashboard 页面加载
-
-                // 🔥 关键修复：检查插件是否已经开始采集数据
-                const needsTwitterPage = await dashboardPage.evaluate(() => {
-                  const table = document.querySelector('table');
-                  const rowCount = table ? table.querySelectorAll('tbody tr, tr[role="row"]').length : 0;
-
-                  // 如果表格只有 ≤2 行（只有表头或刚开始），说明插件可能未采集
-                  return rowCount <= 2;
-                }).catch(() => false);
-
-                if (needsTwitterPage) {
-                  console.log('⚠️  插件可能未初始化，尝试访问 Twitter 主页面激活插件...');
-                  // 切换到主浏览器页面，访问 Twitter 首页
-                  try {
-                    await this.browser.page.bringToFront();
-                    await this.browser.page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
-                    console.log('✅ 已访问 Twitter 首页，等待插件采集...');
-
-                    // 🔥 关键修复：等待插件真正开始采集数据
-                    // 在主页面停留，让插件后台脚本有时间访问页面并采集数据
-                    await this.sleep(8000); // 增加到 8 秒，给插件充足时间
-
-                    // 切回 Dashboard 检查是否开始采集
-                    await dashboardPage.bringToFront();
-                    const dataStarted = await dashboardPage.evaluate(() => {
-                      const table = document.querySelector('table');
-                      const rowCount = table ? table.querySelectorAll('tbody tr, tr[role="row"]').length : 0;
-                      return rowCount > 2; // 如果有超过2行（不只是表头），说明开始采集了
-                    }).catch(() => false);
-
-                    if (dataStarted) {
-                      console.log('✅ 插件已开始采集数据');
-                    } else {
-                      console.warn('⚠️  插件仍未开始采集，将继续监控');
-                    }
-                  } catch (e) {
-                    console.warn(`   访问 Twitter 页面失败: ${e.message}`);
-                  }
-                }
 
                 // 尝试关闭升级弹窗
                 await this.closeUpgradeDialog(dashboardPage);
