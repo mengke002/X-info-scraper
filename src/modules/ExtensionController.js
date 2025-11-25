@@ -543,124 +543,43 @@ export class ExtensionController {
    */
   async triggerExtensionStart(dashboardPage) {
     try {
-      console.log('🚀 主动触发插件采集流程...');
-
-      // 🔍 调试：打印当前页面详细状态
-      const pageInfo = await dashboardPage.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button')).map(b => ({
-          text: b.textContent.trim(),
-          disabled: b.disabled,
-          className: b.className,
-          id: b.id
-        }));
-
-        const inputs = Array.from(document.querySelectorAll('input')).map(i => ({
-          type: i.type,
-          value: i.value,
-          placeholder: i.placeholder,
-          disabled: i.disabled
-        }));
-
-        const table = document.querySelector('table');
-        let tableInfo = null;
-        if (table) {
-          const rows = table.querySelectorAll('tbody tr, tr[role="row"]');
-          tableInfo = {
-            exists: true,
-            rowCount: rows.length,
-            firstRowText: rows[0] ? rows[0].textContent.trim().substring(0, 100) : ''
-          };
-        }
-
-        // 检查是否有 "Extracting" 或其他状态提示
-        const bodyText = document.body.textContent;
-        const hasExtracting = bodyText.includes('Extracting') || bodyText.includes('Please wait');
-        const hasError = bodyText.includes('Error') || bodyText.includes('Failed');
-
-        return {
-          url: window.location.href,
-          title: document.title,
-          bodyTextPreview: bodyText.substring(0, 300).replace(/\s+/g, ' '),
-          buttonCount: buttons.length,
-          buttons: buttons.slice(0, 10),
-          inputCount: inputs.length,
-          inputs: inputs.slice(0, 5),
-          table: tableInfo,
-          hasExtracting,
-          hasError
-        };
-      }).catch(e => ({ error: e.message }));
-
-      console.log('📄 Dashboard 页面详细信息:');
-      console.log(`   URL: ${pageInfo.url}`);
-      console.log(`   标题: ${pageInfo.title}`);
-      console.log(`   按钮数量: ${pageInfo.buttonCount}`);
-      console.log(`   输入框数量: ${pageInfo.inputCount}`);
-      console.log(`   表格: ${pageInfo.table ? `存在，${pageInfo.table.rowCount} 行` : '不存在'}`);
-      console.log(`   状态: Extracting=${pageInfo.hasExtracting}, Error=${pageInfo.hasError}`);
-
-      if (pageInfo.buttons && pageInfo.buttons.length > 0) {
-        console.log('   可见按钮:');
-        pageInfo.buttons.forEach((btn, i) => {
-          console.log(`     ${i+1}. "${btn.text}" (disabled=${btn.disabled})`);
-        });
-      }
-
-      if (pageInfo.table) {
-        console.log(`   表格首行预览: ${pageInfo.table.firstRowText}`);
-      }
-
-      console.log(`   页面文本预览: ${pageInfo.bodyTextPreview}`);
-
-      // 方法1: 模拟页面滚动
-      console.log('🔄 尝试滚动页面...');
+      // 模拟页面滚动
       await dashboardPage.evaluate(() => {
         window.scrollBy(0, 100);
         window.scrollBy(0, -100);
-      }).catch(e => console.warn(`   滚动失败: ${e.message}`));
+      }).catch(() => {});
 
-      // 方法2: 模拟鼠标移动
-      console.log('🖱️  模拟鼠标移动...');
+      // 模拟鼠标移动
       await dashboardPage.mouse.move(100, 100).catch(() => {});
       await dashboardPage.mouse.move(200, 200).catch(() => {});
 
-      // 方法3: 触发 focus 和 click
-      console.log('👆 触发页面交互事件...');
+      // 触发 focus 和 click
       await dashboardPage.evaluate(() => {
         window.focus();
         document.body.click();
-      }).catch(e => console.warn(`   交互失败: ${e.message}`));
+      }).catch(() => {});
 
-      // 方法4: 等待
+      // 等待插件事件监听器生效
       await this.sleep(1500);
 
-      // 方法5: 查找并点击启动按钮
-      console.log('🔍 查找启动按钮...');
-      const clickResult = await dashboardPage.evaluate(() => {
+      // 查找并点击启动按钮
+      const clicked = await dashboardPage.evaluate(() => {
         const buttons = document.querySelectorAll('button');
-        const foundButtons = [];
         for (const btn of buttons) {
           const text = btn.textContent.trim().toLowerCase();
-          foundButtons.push(text);
           if (text.includes('start') || text.includes('resume') || text.includes('continue')) {
             btn.click();
-            return { clicked: true, buttonText: btn.textContent.trim() };
+            return true;
           }
         }
-        return { clicked: false, foundButtons: foundButtons.slice(0, 10) };
-      }).catch(e => ({ error: e.message }));
+        return false;
+      }).catch(() => false);
 
-      if (clickResult.clicked) {
-        console.log(`   ✅ 点击了启动按钮: "${clickResult.buttonText}"`);
+      if (clicked) {
         await this.sleep(500);
-      } else {
-        console.log(`   ⚠️  未找到启动按钮，现有按钮: ${JSON.stringify(clickResult.foundButtons)}`);
       }
-
-      console.log('✅ 插件触发完成，等待采集开始...');
     } catch (error) {
-      console.error(`❌ 触发插件采集失败: ${error.message}`);
-      console.error(`   错误堆栈: ${error.stack}`);
+      // 忽略错误，继续执行
     }
   }
 
@@ -834,21 +753,13 @@ export class ExtensionController {
             const text = document.body.textContent;
             const table = document.querySelector('table');
             let rowCount = 0;
-            let debugInfo = {
-              tableExists: !!table,
-              bodyLength: text.length,
-              bodyPreview: text.substring(0, 200).replace(/\s+/g, ' ')
-            };
 
             if (table) {
               const rows = table.querySelectorAll('tbody tr, tr[role="row"]');
               rowCount = rows.length;
-              debugInfo.rowCount = rowCount;
-              debugInfo.firstRowPreview = rows[0] ? rows[0].textContent.trim().substring(0, 50) : '';
             }
 
             const exportButtons = Array.from(document.querySelectorAll('button'));
-            debugInfo.exportButtonCount = exportButtons.length;
 
             for (const btn of exportButtons) {
               const match = btn.textContent.match(/Export\s+(?:Posts?|Replies?|Following|Followers?)\s*\((\d+)\)/i);
@@ -856,8 +767,7 @@ export class ExtensionController {
                 return {
                   count: parseInt(match[1]),
                   hasExportButton: true,
-                  buttonText: btn.textContent.trim(),
-                  debugInfo
+                  buttonText: btn.textContent.trim()
                 };
               }
             }
@@ -869,19 +779,15 @@ export class ExtensionController {
             const isExtracting = text.includes('Extracting') ||
                                 text.includes('Please wait');
 
-            debugInfo.has300Limit = has300Limit;
-            debugInfo.isExtracting = isExtracting;
-
             return {
               count: rowCount || 0,
               hasExportButton: false,
               has300Limit,
-              isExtracting,
-              debugInfo
+              isExtracting
             };
           }).catch(() => {
             evaluateTimedOut = true;
-            return { count: 0, hasExportButton: false, has300Limit: false, isExtracting: false, debugInfo: { error: 'evaluate failed' } };
+            return { count: 0, hasExportButton: false, has300Limit: false, isExtracting: false };
           }),
           new Promise((_, reject) => setTimeout(() => {
             evaluateTimedOut = true;
@@ -905,24 +811,6 @@ export class ExtensionController {
         }
 
         const currentCount = progress.count;
-
-        // 🔍 每5秒输出一次详细调试信息
-        if (Math.floor(elapsed / 5000) !== Math.floor((elapsed - 1000) / 5000) || currentCount !== lastCount) {
-          console.log(`🔍 监控状态 (${(elapsed / 1000).toFixed(1)}s):`);
-          console.log(`   当前数量: ${currentCount}`);
-          console.log(`   表格存在: ${progress.debugInfo?.tableExists}`);
-          console.log(`   正在提取: ${progress.isExtracting}`);
-          console.log(`   无进展计数: ${noProgressCount}s`);
-          if (progress.debugInfo) {
-            console.log(`   页面文本长度: ${progress.debugInfo.bodyLength}`);
-            if (progress.debugInfo.bodyPreview) {
-              console.log(`   页面预览: ${progress.debugInfo.bodyPreview}`);
-            }
-            if (progress.debugInfo.firstRowPreview) {
-              console.log(`   首行数据: ${progress.debugInfo.firstRowPreview}`);
-            }
-          }
-        }
 
         // 显示进度
         if (currentCount > 0 && currentCount !== lastCount) {
