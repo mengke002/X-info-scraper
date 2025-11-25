@@ -14,11 +14,11 @@ export default {
   },
 
   // Chrome插件路径
-  // 本地开发: ../TwExport (上一级目录)
-  // CI 环境: ./TwExport (当前目录)
+  // 本地开发和 CI 环境: ./TwExport (当前项目目录)
+  // CI 环境可通过环境变量 EXT_TWEET_PATH 和 EXT_FOLLOWER_PATH 覆盖
   extensions: {
-    followerExport: process.env.EXT_FOLLOWER_PATH || '../Twitter Export Follower/3.8.0_0',
-    tweetExport: process.env.EXT_TWEET_PATH || '../TwExport/2.6.0_0'
+    followerExport: process.env.EXT_FOLLOWER_PATH || './Twitter Export Follower/3.8.0_0',
+    tweetExport: process.env.EXT_TWEET_PATH || './TwExport/2.6.0_0'
   },
 
   // Twitter账号信息

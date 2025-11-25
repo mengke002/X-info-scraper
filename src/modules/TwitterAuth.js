@@ -17,39 +17,61 @@ export class TwitterAuth {
   }
 
   /**
-   * 注入 Cookies (从环境变量或文件)
+   * 注入 Cookies (优先级: 环境变量 > 本地文件)
    */
   async injectCookies() {
     try {
       let cookies = [];
-      
+      let source = '';
+
       // 1. 优先从环境变量读取 (GitHub Actions 场景)
       if (process.env.TWITTER_COOKIES_JSON) {
         console.log('🍪 检测到 TWITTER_COOKIES_JSON 环境变量，正在注入...');
         try {
             cookies = JSON.parse(process.env.TWITTER_COOKIES_JSON);
+            source = '环境变量';
         } catch (e) {
             console.error('❌ 解析 TWITTER_COOKIES_JSON 失败:', e.message);
-            return false;
         }
-      } 
-      
+      }
+
+      // 2. 如果环境变量没有，尝试从本地文件读取
+      if (cookies.length === 0) {
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          const cookiesPath = path.resolve(process.cwd(), 'twitter-cookies.json');
+
+          if (fs.existsSync(cookiesPath)) {
+            console.log('🍪 检测到本地 twitter-cookies.json 文件，正在读取...');
+            const cookiesContent = fs.readFileSync(cookiesPath, 'utf8');
+            cookies = JSON.parse(cookiesContent);
+            source = '本地文件';
+          }
+        } catch (e) {
+          console.warn('⚠️  读取本地 cookies 文件失败:', e.message);
+        }
+      }
+
+      // 3. 如果有 cookies，注入到浏览器
       if (cookies.length > 0) {
           // 确保 cookies 是数组
           if (!Array.isArray(cookies)) {
               cookies = [cookies];
           }
-          
+
           // 访问 Twitter 域，确保 Cookie 能被正确设置
           // 必须先访问页面，puppeteer 才能设置该域名的 cookie
           if (this.browser.page.url() === 'about:blank') {
               await this.browser.goto('https://twitter.com', { waitUntil: 'domcontentloaded' });
           }
-          
+
           await this.browser.page.setCookie(...cookies);
-          console.log(`✅ 已注入 ${cookies.length} 个 Cookies`);
+          console.log(`✅ 已从${source}注入 ${cookies.length} 个 Cookies`);
           return true;
       }
+
+      console.log('ℹ️  未找到可用的 Cookies (环境变量或本地文件)');
       return false;
     } catch (error) {
       console.error('❌ 注入 Cookies 失败:', error.message);
