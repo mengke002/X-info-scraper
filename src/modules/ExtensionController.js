@@ -433,9 +433,9 @@ export class ExtensionController {
   async autoConfigureExtension(type, maxCount = null, username = null) {
     console.log(`🤖 开始自动配置插件: ${type}`);
 
-    // 检查是否需要强制重置（连续3次失败）
+    // 检查是否需要强制重置（连续1次失败就重置，避免异常状态传播）
     const now = Date.now();
-    if (this.consecutiveFailures >= 3 && (now - this.lastFailureTime) < 120000) {
+    if (this.consecutiveFailures >= 1 && (now - this.lastFailureTime) < 120000) {
       console.warn(`⚠️  检测到连续 ${this.consecutiveFailures} 次失败，强制重置...`);
       await this.resetExtensionPage();
       this.consecutiveFailures = 0;
@@ -452,20 +452,39 @@ export class ExtensionController {
     } else {
       console.log('♻️  复用已打开的插件页');
 
-      // 健康检查：尝试与页面交互
+      // 健康检查：尝试与页面交互并验证插件功能
       try {
         await Promise.race([
           this.extensionPage.bringToFront(),
           new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
         ]);
 
-        // 验证页面可以正常evaluate
-        await Promise.race([
-          this.extensionPage.evaluate(() => document.body !== null),
+        // 深度验证：检查插件是否能正常工作
+        const isHealthy = await Promise.race([
+          this.extensionPage.evaluate(() => {
+            // 验证基本DOM结构
+            if (document.body === null) return false;
+
+            // 检查是否有JS错误(通过window.onerror)
+            let hasError = false;
+            const oldHandler = window.onerror;
+            window.onerror = () => { hasError = true; return false; };
+            setTimeout(() => { window.onerror = oldHandler; }, 100);
+
+            // 检查关键元素是否存在(至少有按钮或输入框)
+            const hasButtons = document.querySelectorAll('button').length > 0;
+            const hasInputs = document.querySelectorAll('input').length > 0;
+
+            return !hasError && (hasButtons || hasInputs);
+          }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
         ]);
+
+        if (!isHealthy) {
+          throw new Error('插件页健康检查失败：内部状态异常');
+        }
       } catch (error) {
-        console.warn(`⚠️  插件页健康检查失败，重新打开...`);
+        console.warn(`⚠️  插件页健康检查失败: ${error.message}，重新打开...`);
         await this.resetExtensionPage();
         await this.openExtension(type);
         this.currentExtensionType = this.getExtensionForType(type);

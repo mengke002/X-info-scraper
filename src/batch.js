@@ -178,13 +178,22 @@ class BatchTwitterScraper {
             return { total: 0, new: 0, updated: 0 };
           }
 
+          // 检查数据量是否异常低（低于5条可能是插件故障）
+          if (rawData.length < 5) {
+            console.warn(`⚠️  采集数据量异常低 (${rawData.length} 条)，可能是插件故障`);
+            // 标记为失败，触发重置机制
+            this.extensionCtrl.consecutiveFailures++;
+          }
+
           console.log(`📊 读取到 ${rawData.length} 条原始数据`);
 
           // 6. 增量处理 - 合并新旧数据（数据已入库）
           const processResult = await this.incrementalCollector.processCollectedData(username, type, rawData);
 
-          // 任务成功，重置失败计数
-          this.extensionCtrl.consecutiveFailures = 0;
+          // 只有数据量正常时才重置失败计数
+          if (rawData.length >= 5) {
+            this.extensionCtrl.consecutiveFailures = 0;
+          }
 
           return processResult;
         })(),
