@@ -625,15 +625,13 @@ export class ExtensionController {
             if (dashboardPage) {
                 await this.sleep(2000); // 等待 Dashboard 页面加载
 
-                // 🔥 关键修复：检查插件是否真的在采集，如果没有，可能需要先访问 Twitter 页面
+                // 🔥 关键修复：检查插件是否已经开始采集数据
                 const needsTwitterPage = await dashboardPage.evaluate(() => {
-                  const text = document.body.textContent;
-                  // 如果显示 "Extracting" 但表格只有2行（表头），说明插件可能卡住了
-                  const isExtracting = text.includes('Extracting');
                   const table = document.querySelector('table');
                   const rowCount = table ? table.querySelectorAll('tbody tr, tr[role="row"]').length : 0;
 
-                  return isExtracting && rowCount <= 2;
+                  // 如果表格只有 ≤2 行（只有表头或刚开始），说明插件可能未采集
+                  return rowCount <= 2;
                 }).catch(() => false);
 
                 if (needsTwitterPage) {
