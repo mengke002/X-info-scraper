@@ -716,7 +716,7 @@ export class DatabaseManager {
                last_post_count = ?,
                next_run_time = ?
            WHERE id = ?`,
-          ['low', totalPostCount, nextRunTime, taskId]
+          [totalPostCount, nextRunTime, taskId]
         );
 
         console.log(`📊 频率更新: low (${taskType} 固定策略, 间隔 18h, 下次: ${nextRunTime})`);
