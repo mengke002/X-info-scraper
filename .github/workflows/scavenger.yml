@@ -1,0 +1,68 @@
+name: Scavenger Process
+
+on:
+  # 自动定时任务（北京时间凌晨 4 点 = UTC 20 点）
+  schedule:
+    - cron: '0 20 * * *'
+  
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: 'Batch size'
+        required: false
+        default: '60'
+
+jobs:
+  scavenger:
+    name: Daily Scavenger
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      HEADLESS: true
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      TWITTER_COOKIES_JSON: ${{ secrets.TWITTER_COOKIES_JSON }}
+      EXT_TWEET_PATH: ./TwExport/2.6.0_0
+      EXT_FOLLOWER_PATH: ./Twitter Export Follower/3.8.0_0
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+        with:
+          chrome-version: stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run scavenger
+        shell: bash
+        env:
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '60' }}
+        run: |
+          echo "🧹 启动每日清道夫流程 (北京时间 4:00 AM)..."
+          echo "🎯 目标: 从待采集用户中选出最多 $BATCH_SIZE 个进行采集"
+          
+          # 运行批量采集任务
+          # --batch-size=60: 限制最多 60 个用户
+          # --frequency=all: 不限制频率分组，扫描所有待采集用户
+          npm run batch -- --batch-size=$BATCH_SIZE --frequency=all
+
+      - name: Notify on failure
+        if: failure() && env.WEBHOOK_URL != ''
+        run: |
+          curl -X POST ${{ env.WEBHOOK_URL }} \
+            -H 'Content-Type: application/json' \
+            -d "{"text":"❌ Scavenger process failed! Run #${{ github.run_number }}"}" || true
