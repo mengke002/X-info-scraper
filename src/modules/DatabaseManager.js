@@ -25,6 +25,11 @@ export class DatabaseManager {
 
       if (match) {
         const [, user, password, host, port, database, params] = match;
+        
+        // TiDB Cloud 强制要求 SSL 连接
+        const isTiDB = host.includes('tidbcloud.com');
+        const isSSLRequired = params && params.includes('ssl-mode=REQUIRED');
+
         return {
           host,
           port: parseInt(port),
@@ -35,16 +40,28 @@ export class DatabaseManager {
           waitForConnections: true,
           connectionLimit: 10,
           queueLimit: 0,
-          ssl: params && params.includes('ssl-mode=REQUIRED')
-            ? { rejectUnauthorized: false }
+          ssl: (isTiDB || isSSLRequired)
+            ? { rejectUnauthorized: true }
             : undefined
         };
       }
     }
 
     // 使用单独的环境变量或配置对象
+    const host = config.host || process.env.DB_HOST || 'localhost';
+    const isTiDB = host.includes('tidbcloud.com');
+    
+    let sslConfig = config.ssl;
+    if (!sslConfig) {
+      if (isTiDB) {
+        sslConfig = { rejectUnauthorized: true };
+      } else if (process.env.DB_SSL === 'true') {
+        sslConfig = { rejectUnauthorized: false };
+      }
+    }
+
     return {
-      host: config.host || process.env.DB_HOST || 'localhost',
+      host,
       port: config.port || parseInt(process.env.DB_PORT || '3306'),
       user: config.user || process.env.DB_USER || 'root',
       password: config.password || process.env.DB_PASSWORD || '',
@@ -53,7 +70,7 @@ export class DatabaseManager {
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      ssl: config.ssl || (process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined)
+      ssl: sslConfig
     };
   }
 
